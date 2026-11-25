@@ -1,121 +1,109 @@
 'use strict';
-/**
- * The brain of the backend: runs the original Apps Script actions, one request at a time.
- *
- *  - Requests are queued, so two people saving at once never clash (same promise Apps Script's
- *    script lock gave you).
- *  - Reading actions (get..., find..., search...) may use a short in-memory copy of the sheet.
- *    Writing actions always reload the sheet first, so manual edits in Google Sheets are never overwritten.
- *  - Writing actions are all-or-nothing: if anything fails, nothing is saved.
- */
-const { installGlobals } = require('./gas-env');
-const { loadGas } = require('./gas-loader');
-const { SheetStore } = require('./sheets');
+// The brain of the back end: routes an action to the right app's logic against PostgreSQL.
+// Serializes writes per-business to prevent races (same promise the script lock gave).
+
+const { getPool } = require('./db');
+const { lookupBusiness } = require('./router');
+const sales = require('./sales');
+const services = require('./services');
+const { buildPdf } = require('./pdf');
 
 const PAGES = { sales: true, services: true };
-const clean = s => String(s || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
 const isRead = fn => /^(get|find|search)/.test(String(fn || ''));
 
-function friendly(e) {
-  const code = e && (e.code || (e.response && e.response.status));
-  if (code === 403 || code === 404) {
-    return 'The server cannot open this business sheet. Share the sheet with the service account (Editor) and check the SheetID.';
+// Map each app's allowed action names -> implementation functions.
+const ACTIONS = {
+  sales: {
+    getProductsList: sales.getProductsList,
+    getCustomersList: sales.getCustomersList,
+    getExpensesList: sales.getExpensesList,
+    addProduct: sales.addProduct,
+    updateProduct: sales.updateProduct,
+    saveSale: sales.saveSale,
+    getSalesHistory: sales.getSalesHistory,
+    getCategoriesList: sales.getCategoriesList,
+    addRunningExpense: sales.addRunningExpense,
+    getRunningExpenses: sales.getRunningExpenses,
+    addCategory: sales.addCategory,
+    updateCategory: sales.updateCategory,
+    generateReceiptPdf: sales.generateReceiptPdf,
+    getReceiptPdf: sales.sales_getReceiptPdf,
+    getConfig: sales.sales_getConfig,
+    addCustomer: sales.sales_addCustomer,
+    getReceiptHtml: sales.sales_getReceiptHtml
+  },
+  services: {
+    getInitData: services.svc_getInitData,
+    getReportSummary: services.getReportSummary,
+    addCustomer: services.svc_addCustomer,
+    getReceiptHtml: services.svc_getReceiptHtml,
+    searchCustomers: services.searchCustomers,
+    findCustomerByPhone: services.findCustomerByPhone,
+    getCustomersWithSpend: services.getCustomersWithSpend,
+    getCustomerHistory: services.getCustomerHistory,
+    recordSale: services.recordSale,
+    getReceiptPdf: services.getReceiptPdf,
+    addExpense: services.addExpense,
+    getExpenses: services.getExpenses,
+    updateBusinessSettings: services.updateBusinessSettings,
+    getAllServices: services.getAllServices,
+    addService: services.addService,
+    updateService: services.updateService,
+    getAllCategories: services.getAllCategories,
+    addCategory: services.addCategory,
+    updateCategory: services.updateCategory
   }
-  if (code === 429) return 'Google is busy right now. Please try again in a moment.';
-  return (e && e.message) || 'Something went wrong.';
+};
+
+// Per-business write queue (in-process mutex). A single Node instance is assumed
+// (documented in README), same as the original queue in core.js.
+const queues = new Map();
+function serialize(key, fn) {
+  const prev = queues.get(key) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  queues.set(key, run.catch(() => {}));
+  return run;
 }
 
-function createCore({ sheetsApi, registryId, tz, ttlSeconds, gasDir, buildPdf, frontendUrl }) {
-  const store = new SheetStore(sheetsApi, { registryId, ttlSeconds, tz });
-  installGlobals({ store, registryId, tz, frontendUrl });
-  loadGas(gasDir);
-
-  let chain = Promise.resolve();
-  function enqueue(task) {
-    const run = chain.then(task, task);
-    chain = run.catch(() => {});
-    return run;
+// Build a context for an action, always with a dedicated client. Write actions do their
+// work inside their own transaction (the per-business queue serializes them), and some
+// "write" actions (e.g. generateReceiptPdf) also read in the same call.
+async function withContext(code, app, needClient, fn) {
+  const biz = await lookupBusiness(code, app);
+  const tz = process.env.TZ_NAME || 'Africa/Lagos';
+  const client = await getPool().connect();
+  try {
+    return await fn({ biz, bizId: biz.id, tz, client });
+  } finally {
+    client.release();
   }
-
-  async function withBusiness(code, app, fresh, fn) {
-    await store.load(registryId);
-    let biz;
-    try { biz = globalThis.lookupBusiness_(code, app); } catch (e) { throw new Error(e.message); }
-    const wb = await store.load(biz.id, { fresh });
-    try {
-      const out = await fn(wb, biz);
-      await store.commit(wb);
-      return out;
-    } catch (e) {
-      if (wb.dirty) store.drop(biz.id);   // throw away half-finished changes
-      throw e;
-    }
-  }
-
-  return {
-    store,
-
-    /** Same decisions the old doGet() made: which page to show for a PIN. */
-    session({ code, app, pick }) {
-      return enqueue(async () => {
-        code = clean(code); app = clean(app).toLowerCase();
-        if (!code) return { mode: 'login' };
-        try {
-          await store.load(registryId);
-          const rows = globalThis.registryRows_(code);
-          const apps = [];
-          rows.forEach(r => { const a = r.app.toLowerCase(); if (PAGES[a] && !apps.includes(a)) apps.push(a); });
-          const base = { apps, bizName: rows[0].name };
-          if (app) {
-            if (!apps.includes(app)) throw new Error('wrong app');
-            return Object.assign({ mode: 'app', app }, base);
-          }
-          if (apps.length === 1 && !pick) return Object.assign({ mode: 'app', app: apps[0] }, base);
-          return Object.assign({ mode: 'select' }, base);
-        } catch (e) {
-          return { mode: 'login', error: 'Wrong PIN. Check it and try again.' };
-        }
-      });
-    },
-
-    check({ code, app }) {
-      return enqueue(async () => {
-        try {
-          return await withBusiness(String(code || ''), String(app || '').toLowerCase(), false,
-            () => globalThis.checkBusiness(code, String(app || '').toLowerCase()));
-        } catch (e) { throw new Error(friendly(e)); }
-      });
-    },
-
-    call({ code, app, fn, args }) {
-      return enqueue(async () => {
-        app = String(app || '').toLowerCase();
-        try {
-          const result = await withBusiness(String(code || ''), app, !isRead(fn),
-            () => globalThis.api(code, app, fn, Array.isArray(args) ? args : []));
-          if (result && result.__pdf) {
-            const buf = await buildPdf(Object.assign({ tz }, result.__pdf));
-            const out = Object.assign({}, result, { base64: buf.toString('base64') });
-            delete out.__pdf;
-            return out;
-          }
-          return result;
-        } catch (e) { throw new Error(friendly(e)); }
-      });
-    },
-
-    /** One-time setup of a new Services business sheet (replaces running setupBusiness in the editor). */
-    adminSetup({ code }) {
-      return enqueue(async () => {
-        try {
-          return await withBusiness(String(code || ''), 'services', true, () => {
-            globalThis.useBusiness_(code, 'services');
-            return globalThis.setupSpreadsheet();
-          });
-        } catch (e) { throw new Error(friendly(e)); }
-      });
-    }
-  };
 }
 
-module.exports = { createCore };
+async function call({ code, app, fn, args }) {
+  app = String(app || '').toLowerCase();
+  const table = ACTIONS[app];
+  if (!table || !Object.prototype.hasOwnProperty.call(table, fn)) {
+    throw new Error('Unknown action: ' + fn);
+  }
+  const impl = table[fn];
+  const read = isRead(fn);
+  const run = () => withContext(code, app, read, ctx => impl(ctx, ...(Array.isArray(args) ? args : [])));
+  const queueKey = app + ':' + String(code || '').trim().toUpperCase();
+
+  let result;
+  if (read) {
+    result = await run();
+  } else {
+    result = await serialize(queueKey, run);
+  }
+
+  if (result && result.__pdf) {
+    const buf = await buildPdf(Object.assign({ tz: process.env.TZ_NAME || 'Africa/Lagos' }, result.__pdf));
+    const out = Object.assign({}, result, { base64: buf.toString('base64') });
+    delete out.__pdf;
+    return out;
+  }
+  return result;
+}
+
+module.exports = { call, ACTIONS };

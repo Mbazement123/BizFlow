@@ -8,14 +8,59 @@ const db = require('./src/db');
 
 const app = express();
 app.set('trust proxy', 1);
+
+// ---------------------------------------------------------------
+// CORS — must run BEFORE express.json, routes, and any auth middleware
+// so preflight OPTIONS requests are answered first.
+// ---------------------------------------------------------------
+// Comma-separated exact origins, e.g. "https://my-app.vercel.app,http://localhost:3000".
+const rawOrigins = (process.env.ALLOWED_ORIGINS || '').trim();
+const allowAll = rawOrigins === '*' || rawOrigins === '';
+const allowedOrigins = rawOrigins
+  .split(',')
+  .map(s => s.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+
+// Strict Vercel preview pattern: https://<project-prefix>-<hash>.vercel.app
+// Set VERCEL_PROJECT_PREFIX to your project name (e.g. "soft-manager").
+// The hash is [a-z0-9]+ (Vercel deployment ids); arbitrary subdomains are rejected.
+const projectPrefix = (process.env.VERCEL_PROJECT_PREFIX || '').trim().toLowerCase();
+let previewRegex = null;
+if (projectPrefix) {
+  const esc = projectPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  previewRegex = new RegExp('^https://' + esc + '-[a-z0-9]+\\.vercel\\.app$', 'i');
+}
+
+function isOriginAllowed(origin) {
+  if (!origin) return true;                      // curl / Postman / server-to-server: no Origin header
+  if (allowAll) return true;                     // ALLOWED_ORIGINS unset or "*"
+  const clean = origin.replace(/\/+$/, '');
+  if (allowedOrigins.includes(clean)) return true;         // exact match
+  if (previewRegex && previewRegex.test(clean)) return true; // Vercel preview deployments
+  return false;
+}
+
+app.use(cors({
+  origin(origin, cb) {
+    if (isOriginAllowed(origin)) return cb(null, true);
+    return cb(null, false);                      // no CORS headers -> browser blocks it
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token'],
+  maxAge: 600
+}));
+// Ensure preflight requests are answered for every route, before body parsing/auth.
+app.options('*', cors({
+  origin(origin, cb) { return cb(null, isOriginAllowed(origin)); },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token'],
+  maxAge: 600
+}));
+
 app.use(express.json({ limit: '1mb' }));
 
-const allowed = (process.env.ALLOWED_ORIGINS || '*').split(',').map(s => s.trim()).filter(Boolean);
-app.use(cors({
-  origin: (origin, cb) => cb(null, !origin || allowed.includes('*') || allowed.includes(origin)),
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-admin-token']
-}));
 
 // Security headers
 app.use((req, res, next) => {

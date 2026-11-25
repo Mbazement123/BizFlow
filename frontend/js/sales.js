@@ -36,29 +36,6 @@
     document.getElementById('rxDate').value = dkey(new Date());
   }
 
-  // Checks the code with the server (for the Sales app), then starts the app
-  function loginWith(code) {
-    document.getElementById('loginError').textContent = 'Checking...';
-    google.script.run
-      .withSuccessHandler(() => {
-        BIZ_CODE = code;
-        try { localStorage.setItem('bizCode', code); } catch (e) {}
-        document.getElementById('loginError').textContent = '';
-        startApp();
-      })
-      .withFailureHandler(() => {
-        BIZ_CODE = '';
-        try { localStorage.removeItem('bizCode'); } catch (e) {}
-        showLogin('Invalid or inactive business code');
-      })
-      .checkBusiness(code, 'sales');
-  }
-
-  function submitLogin() {
-    const code = document.getElementById('bizCodeInput').value.trim();
-    if (code) loginWith(code);
-  }
-
   // "Switch business" goes back to the chooser page
   function switchBusiness() {
     try { localStorage.removeItem('bizCode'); } catch (e) {}
@@ -81,11 +58,35 @@
   }
 
   // ---------------- INIT ----------------
+  // Access requires a password session (email + password login). The business code alone
+  // no longer grants access; without a valid session we send the user home to log in.
+  function hasSession() {
+    try { return Boolean(localStorage.getItem('bizSession')); } catch (e) { return false; }
+  }
+  function goLogin() {
+    try { localStorage.removeItem('bizSession'); localStorage.removeItem('bizCode'); } catch (e) {}
+    window.top.location.href = HOME_URL;
+  }
+
   window.onload = function () {
-    if (URL_CODE) loginWith(URL_CODE);      // opened from a business link
-    else if (BIZ_CODE) startApp();          // phone remembers the code
-    else showLogin('');                     // first visit: ask for the code
+    if (!hasSession()) { goLogin(); return; }
+    // Validate the session with a harmless authenticated call; on 401 go log in.
+    bizRun()
+      .withSuccessHandler(function () { BIZ_CODE = BIZ_CODE || 'session'; startApp(); })
+      .withFailureHandler(function (err) {
+        var m = (err && err.message) || '';
+        if (/log in|session/i.test(m)) { goLogin(); return; }
+        startApp();   // non-auth error: still let the app load and show its own message
+      })
+      .getConfig();
   };
+
+  // Kept for compatibility with the old code box markup; not used for access anymore.
+  function loginWith(code) {
+    if (!hasSession()) { goLogin(); return; }
+    BIZ_CODE = code || BIZ_CODE;
+    startApp();
+  }
 
   function loadProducts() {
     bizRun()

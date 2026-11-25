@@ -96,31 +96,29 @@ app.get('/health', async (req, res) => {
 app.post('/api/session', pinLimiter, wrap(b => router.session(b)));
 app.post('/api/check', pinLimiter, wrap(b => router.check(b)));
 
-// Data calls. Prefer a valid session token (Authorization: Bearer <token>), which pins the
-// request to that account's business. Falls back to the legacy body {code,...} so the
-// existing ?b=CODE links keep working.
+// Data calls require a valid password session (Authorization: Bearer <token>).
+// The token resolves to the account's own business; the body `code` is ignored, so knowing
+// a business code alone can no longer read or write its data.
 app.post('/api/call', callLimiter, async (req, res) => {
   try {
     const auth = req.get('authorization') || '';
     const bearer = /^Bearer\s+(.+)$/i.exec(auth);
-    if (bearer) {
-      const sess = await require('./src/onboarding').sessionFor(bearer[1]);
-      if (!sess) return res.status(401).json({ ok: false, error: 'Session expired. Please log in again.' });
-      const body = req.body || {};
-      if (body.app && !sess.apps.includes(String(body.app).toLowerCase())) {
-        return res.status(403).json({ ok: false, error: 'Your account does not include this app.' });
-      }
-      const result = await core.call({ code: sess.code, app: body.app, fn: body.fn, args: body.args });
-      return res.json({ ok: true, result });
+    if (!bearer) return res.status(401).json({ ok: false, error: 'Please log in.' });
+    const sess = await require('./src/onboarding').sessionFor(bearer[1]);
+    if (!sess) return res.status(401).json({ ok: false, error: 'Session expired. Please log in again.' });
+    const body = req.body || {};
+    const app = String(body.app || '').toLowerCase();
+    if (!app || !sess.apps.includes(app)) {
+      return res.status(403).json({ ok: false, error: 'Your account does not include this app.' });
     }
-    // Legacy path (no bearer): use the body as before.
-    const result = await core.call(req.body || {});
+    const result = await core.call({ code: sess.code, app, fn: body.fn, args: body.args });
     return res.json({ ok: true, result });
   } catch (e) {
     const status = e && e.statusCode ? e.statusCode : 400;
     return res.status(status).json({ ok: false, error: e.message || 'Something went wrong.' });
   }
 });
+
 
 
 // ---------------------------------------------------------------

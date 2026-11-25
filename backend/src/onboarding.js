@@ -15,8 +15,10 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
 const OTP_TTL_MS = 10 * 60 * 1000;           // 10m
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS || 168) * 60 * 60 * 1000;
 
-function baseUrl() {
-  return (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
+// The verification link must point at the BACKEND (where /api/onboard/verify lives),
+// so it uses PUBLIC_BACKEND_URL. The post-verify redirect target (frontend) is APP_BASE_URL.
+function backendUrl() {
+  return (process.env.PUBLIC_BACKEND_URL || process.env.APP_BASE_URL || '').replace(/\/+$/, '');
 }
 
 function normalizeEmail(email) {
@@ -204,12 +206,24 @@ async function register(body) {
     );
   });
 
-  const link = baseUrl() + '/api/onboard/verify?token=' + encodeURIComponent(token);
-  await mailer.sendVerificationEmail({ to: email, businessName: name, link });
+  const link = backendUrl() + '/api/onboard/verify?token=' + encodeURIComponent(token);
+  let emailDelivered = true;
+  try {
+    const sent = await mailer.sendVerificationEmail({ to: email, businessName: name, link });
+    emailDelivered = !sent || sent.delivered !== false;
+  } catch (e) {
+    // The account + token are already saved. Log loudly but do not fail the signup;
+    // the user can request a fresh link, and the error is visible in the server logs.
+    emailDelivered = false;
+    console.error('[onboarding] verification email FAILED for ' + email + ': ' + (e && e.message));
+  }
 
   return {
     status: 'pending_verification',
-    message: 'Check your email to verify your account and activate your workspace.',
+    emailDelivered,
+    message: emailDelivered
+      ? 'Check your email to verify your account and activate your workspace.'
+      : 'Your account was created, but we could not send the verification email. Please try registering again in a moment, or contact support.',
     email
   };
 }

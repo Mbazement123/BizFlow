@@ -133,16 +133,21 @@ app.post('/api/onboard/login', loginLimiter, wrap(b => onboarding.login(b)));
 app.post('/api/onboard/reset/request', onboardLimiter, wrap(b => onboarding.requestPasswordReset(b)));
 app.post('/api/onboard/reset/confirm', onboardLimiter, wrap(b => onboarding.resetPassword(b)));
 
-// Verification link target. Sends the user back to the frontend with a status.
+// Verification link target. Sends the user back to the FRONTEND (APP_BASE_URL) with a status.
 app.get('/api/onboard/verify', async (req, res) => {
-  const base = (process.env.APP_BASE_URL || '').replace(/\/+$/, '') || '';
+  const frontend = (process.env.APP_BASE_URL || '').replace(/\/+$/, '');
   try {
-    const result = await onboarding.verifyEmail(req.query.token);
-    if (base) return res.redirect(302, base + '/?verified=1');
+    await onboarding.verifyEmail(req.query.token);
+    if (frontend) return res.redirect(302, frontend + '/?verified=1');
     return res.type('text').send('Email verified. You can now log in from the app.');
   } catch (e) {
-    if (base) return res.redirect(302, base + '/?verified=0');
-    return res.status(400).type('text').send(e.message || 'Verification failed.');
+    const msg = (e && e.message) || 'Verification failed.';
+    console.error('[onboard] verify FAILED: ' + msg);
+    const code = /already been used|invalid/i.test(msg) ? 'used'
+      : /expired/i.test(msg) ? 'expired'
+      : 'error';
+    if (frontend) return res.redirect(302, frontend + '/?verified=0&reason=' + code);
+    return res.status(400).type('text').send(msg);
   }
 });
 
@@ -160,8 +165,30 @@ app.post('/admin/setup', pinLimiter, async (req, res) => {
   }
 });
 
+// Diagnostic: send a test email and report the provider's exact response (needs ADMIN_TOKEN).
+// Usage: curl -X POST .../admin/test-email -H "x-admin-token: ..." -H "Content-Type: application/json" -d '{"to":"you@example.com"}'
+app.post('/admin/test-email', async (req, res) => {
+  const token = process.env.ADMIN_TOKEN;
+  if (!token || req.get('x-admin-token') !== token) return res.status(401).json({ ok: false, error: 'Not allowed.' });
+  const mailer = require('./src/mailer');
+  const to = (req.body && req.body.to) || '';
+  const summary = mailer.configSummary();
+  try {
+    const out = await mailer.sendTest(to);
+    res.json({ ok: true, summary, result: out });
+  } catch (e) {
+    res.status(400).json({ ok: false, summary, error: e.message });
+  }
+});
+
 const port = Number(process.env.PORT || 3000);
-app.listen(port, () => console.log('API listening on ' + port));
+app.listen(port, () => {
+  console.log('API listening on ' + port);
+  const s = require('./src/mailer').configSummary();
+  if (!s.hasApiKey) console.warn('[mail] RESEND_API_KEY is NOT set — emails will only be logged, not sent.');
+  if (s.isSandboxSender) console.warn('[mail] MAIL_FROM uses ' + s.from + ' (sandbox). Resend only delivers to your own Resend account email until you verify a domain.');
+  if (!s.appBaseUrl) console.warn('[mail] APP_BASE_URL is NOT set — verification links will be relative and unusable in emails.');
+});
 
 // Graceful shutdown
 process.on('SIGTERM', async () => { await db.close(); process.exit(0); });

@@ -10,7 +10,7 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
-      - key: DATABASE_URL
+      - key: DATABASE_PUBLIC_URL
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false

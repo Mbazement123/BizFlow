@@ -105,11 +105,13 @@
     if (payload.password.length < 8) { msg('signupMsg', 'Password must be at least 8 characters.'); return; }
     busy(btn, true, 'Creating account...');
     apiPost('/api/onboard/register', payload)
-      .then(function () {
+      .then(function (r) {
         busy(btn, false);
-        document.getElementById('noticeTitle').textContent = 'Check your email';
-        document.getElementById('noticeText').textContent =
-          'We sent a verification link to ' + payload.email + '. Open it to activate your workspace, then log in.';
+        var delivered = !r || r.emailDelivered !== false;
+        document.getElementById('noticeTitle').textContent = delivered ? 'Check your email' : 'Almost there';
+        document.getElementById('noticeText').textContent = delivered
+          ? 'We sent a verification link to ' + payload.email + '. Open it to activate your workspace, then log in. (Check spam if you do not see it.)'
+          : (r && r.message) || 'Your account was created, but the verification email could not be sent. Please try again in a moment.';
         show('notice');
       })
       .catch(function (e) { busy(btn, false); msg('signupMsg', e.message || 'Sign up failed.'); });

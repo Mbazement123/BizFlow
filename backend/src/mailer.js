@@ -61,4 +61,25 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-module.exports = { sendVerificationEmail, sendOtpEmail, isConfigured };
+// Diagnostic: send a simple test email and return the provider outcome (or throw with its message).
+async function sendTest(to) {
+  return sendEmail({
+    to,
+    subject: 'Bizflow test email',
+    html: '<p>This is a test email from your Bizflow backend. If you got this, Resend is configured correctly.</p>',
+    text: 'This is a test email from your Bizflow backend.'
+  });
+}
+
+function configSummary() {
+  const from = process.env.MAIL_FROM || 'Bizflow <onboarding@resend.dev>';
+  return {
+    hasApiKey: Boolean(process.env.RESEND_API_KEY),
+    from,
+    fromDomain: (from.match(/@([^>\s]+)/) || [])[1] || '',
+    isSandboxSender: /resend\.dev$/i.test(from),
+    appBaseUrl: process.env.APP_BASE_URL || ''
+  };
+}
+
+module.exports = { sendVerificationEmail, sendOtpEmail, sendTest, configSummary, isConfigured };

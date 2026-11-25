@@ -205,8 +205,76 @@
   </div>
 </dialog>
 
+<!-- Onboarding: login / signup / password reset -->
+<dialog id="onboard" aria-labelledby="onboardTitle">
+  <div class="dlg">
+    <button class="x" type="button" id="closeOnboard" aria-label="Close">&times;</button>
+
+    <!-- Log in -->
+    <div class="ob-view" data-view="login">
+      <h2 id="onboardTitle">Log in</h2>
+      <p class="sub">Welcome back. Enter your email and password.</p>
+      <input id="loginEmail" type="email" placeholder="Business email" autocomplete="email" aria-label="Email">
+      <div class="pinrow">
+        <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" aria-label="Password">
+        <button type="button" class="eye" data-toggle="loginPassword">Show</button>
+      </div>
+      <div class="ob-msg" id="loginMsg" role="alert"></div>
+      <button type="button" class="btn btn-teal go" id="doLogin">Log in</button>
+      <p class="note"><a href="#" data-goto="signup">Create an account</a> &middot; <a href="#" data-goto="reset">Forgot password?</a></p>
+    </div>
+
+    <!-- Sign up -->
+    <div class="ob-view" data-view="signup" hidden>
+      <h2>Create your workspace</h2>
+      <p class="sub">Set up your business in a minute.</p>
+      <input id="suName" type="text" placeholder="Business name" autocomplete="organization" aria-label="Business name">
+      <input id="suEmail" type="email" placeholder="Business email" autocomplete="email" aria-label="Business email">
+      <div class="pinrow">
+        <input id="suPassword" type="password" placeholder="Password (min. 8 characters)" autocomplete="new-password" aria-label="Password">
+        <button type="button" class="eye" data-toggle="suPassword">Show</button>
+      </div>
+      <label class="ob-label" for="suVersion">Application version</label>
+      <select id="suVersion" aria-label="Application version">
+        <option value="SALES">Sales Management</option>
+        <option value="SVC">Service Management</option>
+        <option value="BOTH">Complete Business Suite (Sales + Services)</option>
+      </select>
+      <div class="ob-msg" id="signupMsg" role="alert"></div>
+      <button type="button" class="btn btn-teal go" id="doSignup">Create account</button>
+      <p class="note">Already have an account? <a href="#" data-goto="login">Log in</a></p>
+    </div>
+
+    <!-- Forgot password -->
+    <div class="ob-view" data-view="reset" hidden>
+      <h2>Reset password</h2>
+      <p class="sub">We will email you a 6-digit code.</p>
+      <input id="rsEmail" type="email" placeholder="Business email" autocomplete="email" aria-label="Email">
+      <div class="ob-msg" id="resetMsg" role="alert"></div>
+      <button type="button" class="btn btn-white go" id="doResetRequest">Send code</button>
+      <div id="resetConfirm" hidden>
+        <input id="rsOtp" type="text" inputmode="numeric" placeholder="6-digit code" aria-label="Reset code">
+        <div class="pinrow">
+          <input id="rsPassword" type="password" placeholder="New password (min. 8)" autocomplete="new-password" aria-label="New password">
+          <button type="button" class="eye" data-toggle="rsPassword">Show</button>
+        </div>
+        <button type="button" class="btn btn-teal go" id="doResetConfirm">Set new password</button>
+      </div>
+      <p class="note"><a href="#" data-goto="login">Back to log in</a></p>
+    </div>
+
+    <!-- Success / verify notice -->
+    <div class="ob-view" data-view="notice" hidden>
+      <h2 id="noticeTitle">Done</h2>
+      <p class="sub" id="noticeText"></p>
+      <button type="button" class="btn btn-teal go" data-goto="login">Continue to log in</button>
+    </div>
+  </div>
+</dialog>
+
 <script src="js/config.js"></script>
 <script src="js/gas-shim.js"></script>
+<script src="js/onboard.js"></script>
 <script src="js/home.js"></script>
 </body>
 </html>

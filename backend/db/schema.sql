@@ -2,6 +2,63 @@
 -- Multi-tenant: every row belongs to a business (by code) and an app (sales/services).
 
 -- ---------------------------------------------------------------
+-- Accounts (one per registered customer). The business code is no longer
+-- a login credential; it is resolved server-side from the account.
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS accounts (
+  id            BIGSERIAL PRIMARY KEY,
+  email         TEXT        NOT NULL,
+  password_hash TEXT        NOT NULL,
+  business_name TEXT        NOT NULL,
+  app_version   TEXT        NOT NULL,                -- SALES | SVC | BOTH
+  status        TEXT        NOT NULL DEFAULT 'PENDING', -- PENDING | ACTIVE
+  created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  verified_at   TIMESTAMPTZ,
+  CHECK (app_version IN ('SALES', 'SVC', 'BOTH')),
+  CHECK (status IN ('PENDING', 'ACTIVE'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_accounts_email ON accounts (lower(email));
+
+-- ---------------------------------------------------------------
+-- Email verification tokens (hashed, single-use, expiring).
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id          BIGSERIAL PRIMARY KEY,
+  account_id  BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  token_hash  TEXT   NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_email_verif ON email_verifications (account_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_email_token ON email_verifications (token_hash);
+
+-- ---------------------------------------------------------------
+-- Password recovery OTP (six numeric digits, hashed).
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS password_otp (
+  id          BIGSERIAL PRIMARY KEY,
+  account_id  BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  otp_hash    TEXT   NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_password_otp ON password_otp (account_id);
+
+-- ---------------------------------------------------------------
+-- Sessions (hashed bearer tokens; replaced using raw code).
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sessions (
+  id          BIGSERIAL PRIMARY KEY,
+  account_id  BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  token_hash  TEXT   NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_sessions_token ON sessions (token_hash);
+
+-- ---------------------------------------------------------------
 -- Registry: one row per business-app combination.
 -- Replaces the "Businesses" registry sheet.
 -- ---------------------------------------------------------------
@@ -11,7 +68,8 @@ CREATE TABLE IF NOT EXISTS businesses (
   name          TEXT        NOT NULL,
   app           TEXT        NOT NULL DEFAULT 'SALES',  -- SALES | SERVICES
   active        BOOLEAN     NOT NULL DEFAULT TRUE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  account_id    BIGINT      REFERENCES accounts(id) ON DELETE CASCADE,
   CHECK (app IN ('SALES', 'SERVICES')),
   UNIQUE (code, app)
 );

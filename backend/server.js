@@ -93,7 +93,58 @@ app.get('/health', async (req, res) => {
 });
 app.post('/api/session', pinLimiter, wrap(b => router.session(b)));
 app.post('/api/check', pinLimiter, wrap(b => router.check(b)));
-app.post('/api/call', callLimiter, wrap(b => core.call(b)));
+
+// Data calls. Prefer a valid session token (Authorization: Bearer <token>), which pins the
+// request to that account's business. Falls back to the legacy body {code,...} so the
+// existing ?b=CODE links keep working.
+app.post('/api/call', callLimiter, async (req, res) => {
+  try {
+    const auth = req.get('authorization') || '';
+    const bearer = /^Bearer\s+(.+)$/i.exec(auth);
+    if (bearer) {
+      const sess = await require('./src/onboarding').sessionFor(bearer[1]);
+      if (!sess) return res.status(401).json({ ok: false, error: 'Session expired. Please log in again.' });
+      const body = req.body || {};
+      if (body.app && !sess.apps.includes(String(body.app).toLowerCase())) {
+        return res.status(403).json({ ok: false, error: 'Your account does not include this app.' });
+      }
+      const result = await core.call({ code: sess.code, app: body.app, fn: body.fn, args: body.args });
+      return res.json({ ok: true, result });
+    }
+    // Legacy path (no bearer): use the body as before.
+    const result = await core.call(req.body || {});
+    return res.json({ ok: true, result });
+  } catch (e) {
+    const status = e && e.statusCode ? e.statusCode : 400;
+    return res.status(status).json({ ok: false, error: e.message || 'Something went wrong.' });
+  }
+});
+
+
+// ---------------------------------------------------------------
+// Onboarding: registration -> email verification -> login -> password recovery
+// ---------------------------------------------------------------
+const onboarding = require('./src/onboarding');
+const onboardLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: true, legacyHeaders: false, message: { ok: false, error: 'Too many attempts. Please wait and try again.' } });
+const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false, message: { ok: false, error: 'Too many login attempts. Please wait and try again.' } });
+
+app.post('/api/onboard/register', onboardLimiter, wrap(b => onboarding.register(b)));
+app.post('/api/onboard/login', loginLimiter, wrap(b => onboarding.login(b)));
+app.post('/api/onboard/reset/request', onboardLimiter, wrap(b => onboarding.requestPasswordReset(b)));
+app.post('/api/onboard/reset/confirm', onboardLimiter, wrap(b => onboarding.resetPassword(b)));
+
+// Verification link target. Sends the user back to the frontend with a status.
+app.get('/api/onboard/verify', async (req, res) => {
+  const base = (process.env.APP_BASE_URL || '').replace(/\/+$/, '') || '';
+  try {
+    const result = await onboarding.verifyEmail(req.query.token);
+    if (base) return res.redirect(302, base + '/?verified=1');
+    return res.type('text').send('Email verified. You can now log in from the app.');
+  } catch (e) {
+    if (base) return res.redirect(302, base + '/?verified=0');
+    return res.status(400).type('text').send(e.message || 'Verification failed.');
+  }
+});
 
 // One-time setup of a new Services business (needs ADMIN_TOKEN)
 app.post('/admin/setup', pinLimiter, async (req, res) => {

@@ -55,11 +55,17 @@
   });
 
   document.querySelectorAll('[data-login]').forEach(function (a) {
-    a.addEventListener('click', function (e) { e.preventDefault(); setMenu(false); openLogin(''); });
+    a.addEventListener('click', function (e) {
+      e.preventDefault(); setMenu(false);
+      if (window.openOnboard) window.openOnboard('login'); else openLogin('');
+    });
   });
   document.querySelectorAll('[data-signup]').forEach(function (a) {
     if (SIGNUP_URL) { a.href = SIGNUP_URL; a.target = '_blank'; a.rel = 'noopener'; return; }
-    a.addEventListener('click', function (e) { e.preventDefault(); setMenu(false); openLogin(''); });
+    a.addEventListener('click', function (e) {
+      e.preventDefault(); setMenu(false);
+      if (window.openOnboard) window.openOnboard('signup'); else openLogin('');
+    });
   });
 
   // Burger menu

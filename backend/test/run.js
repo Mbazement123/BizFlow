@@ -160,10 +160,89 @@ async function test(name, fn) {
     assert.ok(list.some(c => c.Name === 'Bola'));
   });
 
+  console.log('Onboarding');
+  const onboarding = require('../src/onboarding');
+  const { createHash } = require('node:crypto');
+  const EMAIL = 'owner+' + CODE.toLowerCase() + '@example.com';
+  const PASSWORD = 'correct horse battery';
+
+  await test('register creates a PENDING account (no email provider needed)', async () => {
+    const r = await onboarding.register({ businessName: 'Onboard Co', email: EMAIL, password: PASSWORD, appVersion: 'BOTH' });
+    assert.equal(r.status, 'pending_verification');
+    const acc = await query('SELECT status FROM accounts WHERE lower(email) = lower($1)', [EMAIL]);
+    assert.equal(acc.rows[0].status, 'PENDING');
+  });
+  await test('duplicate email is rejected while pending (resends, not duplicates)', async () => {
+    await onboarding.register({ businessName: 'Other Co', email: EMAIL, password: PASSWORD, appVersion: 'SALES' });
+    const n = await query('SELECT COUNT(*)::int AS c FROM accounts WHERE lower(email) = lower($1)', [EMAIL]);
+    assert.equal(n.rows[0].c, 1);
+  });
+  await test('login is refused until email is verified', async () => {
+    await assert.rejects(onboarding.login({ email: EMAIL, password: PASSWORD }), /verify your email/i);
+  });
+  await test('verify provisions business(es), activates account, allows login + isolation', async () => {
+    // Read the raw token from the DB row is impossible (hashed); instead mint a fresh one via register
+    // and read its hash back to confirm storage, then verify by direct call using the token we can't know.
+    // To verify end-to-end we recompute: we can't reverse a hash, so insert a known token.
+    const acc = (await query('SELECT id FROM accounts WHERE lower(email)=lower($1)', [EMAIL])).rows[0];
+    const raw = 'testtoken-' + CODE;
+    const hash = createHash('sha256').update(raw).digest('hex');
+    await query('UPDATE email_verifications SET consumed_at = now() WHERE account_id = $1', [acc.id]);
+    await query('INSERT INTO email_verifications (account_id, token_hash, expires_at) VALUES ($1,$2,$3)', [acc.id, hash, new Date(Date.now() + 3600000)]);
+
+    const v = await onboarding.verifyEmail(raw);
+    assert.equal(v.status, 'active');
+    const st = await query('SELECT status FROM accounts WHERE id = $1', [acc.id]);
+    assert.equal(st.rows[0].status, 'ACTIVE');
+
+    const biz = await query('SELECT code, app FROM businesses WHERE account_id = $1 ORDER BY app', [acc.id]);
+    assert.equal(biz.rows.length, 2);                          // BOTH -> SALES + SERVICES
+    assert.ok(biz.rows[0].code && biz.rows[0].code === biz.rows[1].code);   // same code
+
+    const login = await onboarding.login({ email: EMAIL, password: PASSWORD });
+    assert.ok(login.session && login.code);
+    assert.deepEqual(login.apps.sort(), ['sales', 'services']);
+
+    // Session resolves to the same code (used to scope /api/call)
+    const sess = await onboarding.sessionFor(login.session);
+    assert.equal(sess.code, login.code);
+
+    // The provisioned Sales workspace works and is independent
+    const code = login.code;
+    const list = await core.call({ code, app: 'sales', fn: 'getProductsList', args: [] });
+    assert.ok(Array.isArray(list));
+  });
+  await test('wrong password and unknown email give the same generic error', async () => {
+    await assert.rejects(onboarding.login({ email: EMAIL, password: 'wrongwrong' }), /Incorrect email or password/);
+    await assert.rejects(onboarding.login({ email: 'nobody@example.com', password: 'whatever1' }), /Incorrect email or password/);
+  });
+  await test('password reset via OTP works and invalidates sessions', async () => {
+    const acc = (await query('SELECT id FROM accounts WHERE lower(email)=lower($1)', [EMAIL])).rows[0];
+    const otp = '123456';
+    const hash = createHash('sha256').update(otp).digest('hex');
+    await query('UPDATE password_otp SET consumed_at = now() WHERE account_id = $1', [acc.id]);
+    await query('INSERT INTO password_otp (account_id, otp_hash, expires_at) VALUES ($1,$2,$3)', [acc.id, hash, new Date(Date.now() + 600000)]);
+    // create a session first so we can assert it is cleared
+    const before = await onboarding.login({ email: EMAIL, password: PASSWORD });
+    assert.ok(await onboarding.sessionFor(before.session));
+    await onboarding.resetPassword({ email: EMAIL, otp, password: 'brand new pass' });
+    assert.equal(await onboarding.sessionFor(before.session), null);
+    const relog = await onboarding.login({ email: EMAIL, password: 'brand new pass' });
+    assert.ok(relog.session);
+  });
+
   console.log('\n' + passed + ' passed' + (failures.length ? ', ' + failures.length + ' FAILED' : '') + ' (code ' + CODE + ')');
 
   // Cleanup the isolated test data
-  try { await query('DELETE FROM businesses WHERE code = $1', [CODE]); } catch (e) {}
+  try {
+    await query('DELETE FROM businesses WHERE code = $1', [CODE]);
+    // Delete any onboarding businesses (they use generated codes) linked to the test email's account.
+    const accs = await query('SELECT id FROM accounts WHERE lower(email) = lower($1)', [EMAIL]);
+    for (const a of accs.rows) {
+      await query('DELETE FROM businesses WHERE account_id = $1', [a.id]);
+      await query('DELETE FROM accounts WHERE id = $1', [a.id]);
+    }
+  } catch (e) {}
   await close();
 
   if (failures.length) {

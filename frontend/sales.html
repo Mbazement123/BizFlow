@@ -216,13 +216,13 @@
 
   <div class="toast" id="toast"></div>
 
-  <!-- Business code login -->
+  <!-- Legacy code box (unused: access is now email + password login on the home page) -->
   <div class="modal-overlay" id="loginModal">
     <div class="modal">
-      <h3>Enter business code</h3>
-      <input type="text" id="bizCodeInput" placeholder="Business code" autocapitalize="characters" autocomplete="off">
+      <h3>Please log in</h3>
+      <p style="font-size:14px;margin:6px 0 12px;">Log in with your email and password to continue.</p>
       <div id="loginError" style="color:var(--danger);font-size:13px;margin-bottom:8px;"></div>
-      <button class="btn-primary" type="button" onclick="submitLogin()">Continue</button>
+      <button class="btn-primary" type="button" onclick="window.top.location.href='/'">Go to login</button>
     </div>
   </div>
 

@@ -2,8 +2,15 @@
   const BIZ_CODE = (new URLSearchParams(location.search).get('b') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);   // from the ?b=CODE link
   const HOME_URL = '/';   // the home / chooser page
 
-  // No code in the link -> back to the chooser to pick an app and enter one
-  if (!BIZ_CODE) window.top.location.href = HOME_URL;
+  // Access requires a password session (email + password login). Without it, go log in.
+  function hasSession() {
+    try { return Boolean(localStorage.getItem('bizSession')); } catch (e) { return false; }
+  }
+  function goLogin() {
+    try { localStorage.removeItem('bizSession'); localStorage.removeItem('bizCode'); } catch (e) {}
+    window.top.location.href = HOME_URL;
+  }
+  if (!hasSession()) goLogin();
 
   // Keeps the google.script.run chain style, but sends the business code and app with every call
   function bizRun() {
@@ -38,7 +45,7 @@
   document.getElementById('hdrDate').textContent = new Date().toLocaleDateString();
   document.getElementById('expDate').valueAsDate = new Date();
 
-  if (BIZ_CODE) bizRun().withSuccessHandler(onInitData).withFailureHandler(onError).getInitData();
+  if (hasSession()) bizRun().withSuccessHandler(onInitData).withFailureHandler(onError).getInitData();
 
   function onInitData(data) {
     STATE.services = data.services || [];
@@ -60,7 +67,9 @@
   }
 
   function onError(err) {
-    showToast((err && err.message) ? err.message : 'Something went wrong.');
+    const m = (err && err.message) ? err.message : 'Something went wrong.';
+    if (/log in|session/i.test(m)) { goLogin(); return; }
+    showToast(m);
   }
 
   function showToast(msg) {

@@ -4,6 +4,10 @@
 
 const API_URL = 'https://api.resend.com/emails';
 
+// Last delivery error (message only), exposed via /health for diagnostics.
+let lastError = null;
+let lastSentAt = null;
+
 function isConfigured() {
   return Boolean(process.env.RESEND_API_KEY);
 }
@@ -19,23 +23,32 @@ async function sendEmail({ to, subject, html, text }) {
     console.log('Subject: ' + subject);
     console.log(text || html);
     console.log('-----------------------------------------------\n');
+    lastError = 'RESEND_API_KEY not set';
     return { delivered: false };
   }
 
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer ' + process.env.RESEND_API_KEY,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ from, to: [to], subject, html, text })
-  });
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + process.env.RESEND_API_KEY,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ from, to: [to], subject, html, text })
+    });
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error('Email provider error (' + res.status + '): ' + body.slice(0, 200));
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      lastError = 'HTTP ' + res.status + ': ' + body.slice(0, 300);
+      throw new Error('Email provider error (' + res.status + '): ' + body.slice(0, 200));
+    }
+    lastError = null;
+    lastSentAt = new Date().toISOString();
+    return { delivered: true };
+  } catch (e) {
+    if (!lastError) lastError = (e && e.message) || 'unknown error';
+    throw e;
   }
-  return { delivered: true };
 }
 
 async function sendVerificationEmail({ to, businessName, link }) {
@@ -73,12 +86,16 @@ async function sendTest(to) {
 
 function configSummary() {
   const from = process.env.MAIL_FROM || 'Bizflow <onboarding@resend.dev>';
+  const fromDomain = (from.match(/@([^>\s]+)/) || [])[1] || '';
   return {
     hasApiKey: Boolean(process.env.RESEND_API_KEY),
     from,
-    fromDomain: (from.match(/@([^>\s]+)/) || [])[1] || '',
-    isSandboxSender: /resend\.dev$/i.test(from),
-    appBaseUrl: process.env.APP_BASE_URL || ''
+    fromDomain,
+    isSandboxSender: /^resend\.dev$/i.test(fromDomain),
+    appBaseUrl: process.env.APP_BASE_URL || '',
+    publicBackendUrl: process.env.PUBLIC_BACKEND_URL || '',
+    lastError: lastError,
+    lastSentAt: lastSentAt
   };
 }
 

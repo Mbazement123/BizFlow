@@ -6,10 +6,10 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --env-file=.env server.js",
-    "migrate": "node --env-file=.env db/migrate.js",
-    "migrate:import": "node --env-file=.env db/import.js",
-    "test": "node --env-file=.env test/run.js"
+    "dev": "node server.js",
+    "migrate": "node db/migrate.js",
+    "migrate:import": "node db/import.js",
+    "test": "node test/run.js"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

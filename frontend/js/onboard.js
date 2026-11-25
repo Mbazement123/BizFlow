@@ -107,6 +107,13 @@
     apiPost('/api/onboard/register', payload)
       .then(function (r) {
         busy(btn, false);
+        if (r && r.status === 'active') {
+          // Email verification is disabled: account is ready immediately.
+          document.getElementById('noticeTitle').textContent = 'Account created';
+          document.getElementById('noticeText').textContent = 'Your workspace is ready. Log in with your email and password.';
+          show('notice');
+          return;
+        }
         var delivered = !r || r.emailDelivered !== false;
         document.getElementById('noticeTitle').textContent = delivered ? 'Check your email' : 'Almost there';
         document.getElementById('noticeText').textContent = delivered

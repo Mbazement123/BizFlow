@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+  <title>Soft Sales</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="stylesheet" href="css/sales.css">
+</head>
+<body>
+
+  <header>
+    <div class="biz-name" id="headerBiz">Sales Tracker</div>
+    <div class="page-label" id="headerPage">New Sale</div>
+  </header>
+
+  <div id="scrollArea">
+
+    <div id="errorBanner" style="display:none;background:#F4E1DE;color:#8A2F28;padding:10px 14px;font-size:12.5px;line-height:1.4;"></div>
+
+    <!-- ============ SALE TAB ============ -->
+    <div class="page active" id="page-sale">
+      <div class="pinned">
+        <div class="card">
+          <h3>Customer</h3>
+          <div id="selectedCustomer" class="list-item" style="display:none;">
+            <div><div class="name" id="selCustName"></div></div>
+            <button class="btn-secondary" type="button" onclick="clearCustomer()">Change</button>
+          </div>
+          <div id="customerPicker">
+            <div class="search-box">
+              <input type="text" class="searchInput" id="customerSearch" placeholder="Search customer by name or phone (blank = Walk-in)" oninput="renderCustomerResults()" autocomplete="off">
+              <div id="customerResults" class="dropdown-list"></div>
+            </div>
+            <button class="btn-secondary btn-block" type="button" onclick="openNewCustomerModal()">+ Add New Customer</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Add Products</h3>
+          <div class="search-box">
+            <input type="text" id="productSearch" placeholder="Search product by name" oninput="renderProductResults()" autocomplete="off">
+            <div id="productResults" class="dropdown-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Sale Items</h3>
+        <div id="lineItems"><div class="empty">No items added yet</div></div>
+        <div class="totals" id="totalsBox" style="display:none;">
+          <div class="row-line"><span>Subtotal</span><span id="tSubtotal"></span></div>
+          <div class="row-line"><span>Discount (%)</span><input type="number" id="discountInput" value="0" min="0" max="100" step="any" inputmode="decimal" style="width:90px;margin:0;padding:4px 8px;text-align:right;" oninput="renderTotals()"></div>
+          <div class="row-line"><span>Discount amount</span><span id="tDiscount"></span></div>
+          <div class="row-line grand"><span>Total</span><span id="tTotal"></span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Payment Method</h3>
+        <select id="paymentMethod">
+          <option>Cash</option>
+          <option>Card</option>
+          <option>Bank Transfer</option>
+          <option>Mobile Money</option>
+          <option>Other</option>
+        </select>
+        <button class="btn-primary" type="button" onclick="completeSale()">Complete Sale &amp; Print Receipt</button>
+      </div>
+    </div>
+
+    <!-- ============ PRODUCTS TAB ============ -->
+    <div class="page" id="page-products">
+      <div class="card">
+        <h3>Buy / Restock Product</h3>
+        <div class="search-box" style="margin-bottom:0;">
+          <input type="text" id="newProdName" placeholder="Product name" oninput="onProdNameInput()" autocomplete="off">
+          <div id="prodSuggest" class="dropdown-list"></div>
+        </div>
+        <div id="prodHint" class="hint" style="display:none;margin-top:8px;"></div>
+        <div class="row" style="margin-top:8px;">
+          <select id="newProdCategory" onchange="onCatSelect('newProdCategory','Product')"></select>
+          <input type="text" id="newProdUnit" placeholder="Unit (pcs, kg...)" value="pcs">
+        </div>
+        <div id="inline_Product" class="row" style="display:none;">
+          <input type="text" id="inlineName_Product" placeholder="New category name">
+          <button class="btn-secondary" type="button" style="flex:0 0 auto;margin-bottom:8px;" onclick="addInlineCat('newProdCategory','Product')">Add</button>
+        </div>
+        <div class="row">
+          <input type="number" id="newProdCost" inputmode="decimal" placeholder="Cost price (per unit)">
+          <input type="number" id="newProdPrice" inputmode="decimal" placeholder="Selling price">
+        </div>
+        <input type="number" id="newProdStock" inputmode="numeric" placeholder="Quantity bought">
+        <button class="btn-primary" type="button" onclick="submitNewProduct()">Save Purchase</button>
+      </div>
+      <div class="card">
+        <h3>All Products</h3>
+        <input type="text" id="productListSearch" placeholder="Search products" oninput="renderProductList()">
+        <div id="productList"></div>
+      </div>
+      <div class="card">
+        <h3>Product Categories</h3>
+        <div class="hint">These appear in the Category dropdown above. Rename one and every product using it follows. Untick Active to hide it from the dropdown.</div>
+        <div id="catList_Product"></div>
+        <div class="row" style="margin-top:10px;">
+          <input type="text" id="newCat_Product" placeholder="New category name" style="margin:0;">
+          <button class="btn-secondary" type="button" style="flex:0 0 auto;" onclick="addCatFromManager('Product')">+ Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ CUSTOMERS TAB ============ -->
+    <div class="page" id="page-customers">
+      <div class="card">
+        <h3>Add Customer</h3>
+        <input type="text" id="newCustName" placeholder="Full name">
+        <div class="row">
+          <input type="text" id="newCustPhone" inputmode="tel" placeholder="Phone">
+          <input type="text" id="newCustEmail" placeholder="Email">
+        </div>
+        <input type="text" id="newCustAddress" placeholder="Address">
+        <button class="btn-primary" type="button" onclick="submitNewCustomer()">Save Customer</button>
+      </div>
+      <div class="card">
+        <h3>All Customers</h3>
+        <input type="text" id="customerListSearch" placeholder="Search customers" oninput="renderCustomerList()">
+        <div id="customerList"></div>
+      </div>
+    </div>
+
+    <!-- ============ EXPENSES TAB ============ -->
+    <div class="page" id="page-expenses">
+      <div class="card">
+        <h3>Record Running Expense</h3>
+        <div class="hint">Fuel, transport, rent, utilities, domestic and other costs of running the business.</div>
+        <label for="rxDate">Date</label>
+        <input type="date" id="rxDate">
+        <label for="rxCategory">Category</label>
+        <select id="rxCategory" onchange="onCatSelect('rxCategory','Expense')"></select>
+        <div id="inline_Expense" class="row" style="display:none;">
+          <input type="text" id="inlineName_Expense" placeholder="New category name">
+          <button class="btn-secondary" type="button" style="flex:0 0 auto;margin-bottom:8px;" onclick="addInlineCat('rxCategory','Expense')">Add</button>
+        </div>
+        <input type="text" id="rxDesc" placeholder="Description (e.g. 20L petrol for generator)">
+        <input type="number" id="rxAmount" inputmode="decimal" placeholder="Amount">
+        <button class="btn-primary" type="button" onclick="submitRunningExpense()">Save Expense</button>
+      </div>
+
+      <div class="card">
+        <h3>Expenses Summary</h3>
+        <div class="row">
+          <div><label for="expFrom">From</label><input type="date" id="expFrom" onchange="renderExpenses()"></div>
+          <div><label for="expTo">To</label><input type="date" id="expTo" onchange="renderExpenses()"></div>
+        </div>
+        <div class="chips">
+          <button class="btn-secondary" type="button" onclick="setExpRange('today')">Today</button>
+          <button class="btn-secondary" type="button" onclick="setExpRange('week')">7 Days</button>
+          <button class="btn-secondary" type="button" onclick="setExpRange('month')">This Month</button>
+          <button class="btn-secondary" type="button" onclick="setExpRange('all')">All</button>
+        </div>
+        <div id="expBody"><div class="spinner">Loading...</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Running Expenses</h3>
+        <div id="runList"><div class="spinner">Loading...</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Goods Purchased</h3>
+        <div id="expList"><div class="spinner">Loading...</div></div>
+      </div>
+
+      <div class="card">
+        <h3>Expense Categories</h3>
+        <div class="hint">These appear in the Category dropdown above. Rename one and past expenses follow. Untick Active to hide it.</div>
+        <div id="catList_Expense"></div>
+        <div class="row" style="margin-top:10px;">
+          <input type="text" id="newCat_Expense" placeholder="New category name" style="margin:0;">
+          <button class="btn-secondary" type="button" style="flex:0 0 auto;" onclick="addCatFromManager('Expense')">+ Add</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ HISTORY TAB ============ -->
+    <div class="page" id="page-history">
+      <div class="card">
+        <h3>Sales Report</h3>
+        <div class="row">
+          <div><label for="repFrom">From</label><input type="date" id="repFrom" onchange="renderReport()"></div>
+          <div><label for="repTo">To</label><input type="date" id="repTo" onchange="renderReport()"></div>
+        </div>
+        <div class="chips">
+          <button class="btn-secondary" type="button" onclick="setRange('today')">Today</button>
+          <button class="btn-secondary" type="button" onclick="setRange('week')">7 Days</button>
+          <button class="btn-secondary" type="button" onclick="setRange('month')">This Month</button>
+          <button class="btn-secondary" type="button" onclick="setRange('all')">All</button>
+        </div>
+        <div id="reportBody"><div class="spinner">Loading...</div></div>
+      </div>
+      <div class="card">
+        <h3>Sales in Range</h3>
+        <div id="historyList"><div class="spinner">Loading...</div></div>
+      </div>
+      <button class="btn-secondary btn-block" type="button" onclick="switchBusiness()">Switch business</button>
+    </div>
+
+  </div><!-- end scrollArea -->
+
+  <nav class="tabbar">
+    <button type="button" class="active" data-tab="sale" onclick="switchTab('sale', this)">🧾<br>Sale</button>
+    <button type="button" data-tab="products" onclick="switchTab('products', this)">📦<br>Products</button>
+    <button type="button" data-tab="customers" onclick="switchTab('customers', this)">👤<br>Customers</button>
+    <button type="button" data-tab="expenses" onclick="switchTab('expenses', this)">🛒<br>Expenses</button>
+    <button type="button" data-tab="history" onclick="switchTab('history', this)">📜<br>History</button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Business code login -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal">
+      <h3>Enter business code</h3>
+      <input type="text" id="bizCodeInput" placeholder="Business code" autocapitalize="characters" autocomplete="off">
+      <div id="loginError" style="color:var(--danger);font-size:13px;margin-bottom:8px;"></div>
+      <button class="btn-primary" type="button" onclick="submitLogin()">Continue</button>
+    </div>
+  </div>
+
+  <!-- New customer quick modal -->
+  <div class="modal-overlay" id="newCustModal">
+    <div class="modal">
+      <h3>New Customer</h3>
+      <input type="text" id="qcName" placeholder="Full name">
+      <input type="text" id="qcPhone" inputmode="tel" placeholder="Phone">
+      <div class="row">
+        <button class="btn-secondary" type="button" onclick="closeNewCustomerModal()">Cancel</button>
+        <button class="btn-primary" type="button" onclick="quickAddCustomer()">Save &amp; Select</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Receipt modal -->
+  <div class="modal-overlay" id="receiptModal">
+    <div class="modal" style="max-width:320px;">
+      <h3 id="receiptModalTitle">Receipt</h3>
+      <div id="receiptSpinner" class="spinner">Preparing receipt...</div>
+      <iframe id="receiptFrame" style="display:none;"></iframe>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn-secondary" type="button" onclick="closeReceiptModal()">Close</button>
+        <button class="btn-secondary" type="button" onclick="shareReceipt()">Share PDF</button>
+        <button class="btn-primary" type="button" onclick="printReceipt()">Print</button>
+      </div>
+      <button class="btn-secondary btn-block" type="button" onclick="archiveReceipt()" id="archiveBtn">Save PDF Copy</button>
+    </div>
+  </div>
+
+<script src="js/config.js"></script>
+<script src="js/gas-shim.js"></script>
+<script src="js/sales.js"></script>
+</body>
+</html>

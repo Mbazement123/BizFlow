@@ -1,0 +1,186 @@
+    /* ====== BRAND PALETTE ======
+       Navy #2F4156 (headers, navigation)   Teal #567C8D (buttons, interactive)
+       Beige #F5EFEB (page background)      Sky Blue #C8D9E6 (subtle highlights)
+       White #FFFFFF (cards, forms)                                              */
+    :root{
+      --navy:#2F4156;
+      --navy-dark:#243447;
+      --teal:#567C8D;
+      --teal-dark:#456676;
+      --beige:#F5EFEB;
+      --sky:#C8D9E6;
+      --sky-soft:#E6EEF4;
+      --white:#FFFFFF;
+      --bg:var(--beige);
+      --card:var(--white);
+      --text:#2F4156;
+      --muted:#6F8595;
+      --line:#E3EAF0;
+      --danger:#B3453B;
+      --radius:14px;
+      --shadow:0 1px 2px rgba(47,65,86,.06),0 6px 18px rgba(47,65,86,.07);
+    }
+    *{box-sizing:border-box;}
+    body{
+      margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      background:var(--bg);color:var(--text);line-height:1.4;
+    }
+    html,body{overscroll-behavior:none;-webkit-text-size-adjust:100%;touch-action:manipulation;}
+    body:has(.modal-overlay.show){overflow:hidden;}
+    header{
+      background:var(--navy);color:#fff;padding:10px 16px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      text-align:center;box-shadow:0 2px 12px rgba(36,52,71,.28);
+    }
+    header .biz-name{font-size:17px;font-weight:700;line-height:1.2;letter-spacing:.01em;}
+    header .page-label{font-size:11px;font-weight:500;color:var(--sky);margin-top:2px;letter-spacing:.06em;text-transform:uppercase;}
+    .page{padding:14px 12px;display:none;}
+    .page.active{display:block;}
+    .card{
+      background:var(--card);border-radius:var(--radius);padding:16px;
+      margin-bottom:14px;box-shadow:var(--shadow);border:1px solid var(--line);
+    }
+    .card h3{margin:0 0 12px;font-size:12px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.08em;}
+    .sub{font-size:12px;color:var(--muted);}
+    /* 16px stops iOS from zooming the page when an input is focused */
+    input,select{
+      width:100%;padding:11px 12px;border:1px solid #D5E0E9;border-radius:10px;
+      font-size:16px;margin-bottom:8px;background:#fff;color:var(--text);
+      transition:border-color .15s, box-shadow .15s;
+    }
+    input:focus,select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(86,124,141,.18);}
+    input::placeholder{color:#9AACB9;}
+    label{font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px;}
+    button{
+      border:none;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:600;
+      cursor:pointer;transition:background .15s, transform .05s;
+    }
+    button:active{transform:scale(.985);}
+    .btn-primary{background:var(--teal);color:#fff;width:100%;box-shadow:0 2px 6px rgba(86,124,141,.35);}
+    .btn-primary:active{background:var(--teal-dark);}
+    .btn-secondary{background:var(--sky);color:var(--navy);}
+    .btn-secondary:active{background:#B5CCDC;}
+    .btn-danger{background:#F4E1DE;color:var(--danger);}
+    .btn-block{width:100%;margin-top:6px;}
+    .row{display:flex;gap:8px;}
+    .row > *{flex:1;}
+    .search-box{position:relative;margin-bottom:10px;}
+    .dropdown-list{
+      display:none;margin-top:6px;
+      background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+      overflow-y:auto;-webkit-overflow-scrolling:touch;
+    }
+    .dropdown-list.show{display:block;}
+    .dropdown-list .list-item{padding:10px 12px;cursor:pointer;}
+    .dropdown-list .list-item:active{background:var(--sky-soft);}
+    .list-item.out{opacity:.55;cursor:not-allowed;}
+    .out-tag{font-size:12px;font-weight:700;color:var(--danger);}
+    .list-item{
+      display:flex;justify-content:space-between;align-items:center;gap:8px;
+      padding:10px 0;border-bottom:1px solid var(--line);
+    }
+    .list-item:last-child{border-bottom:none;}
+    .list-item .name{font-weight:600;font-size:14px;}
+    .list-item .sub{font-size:12px;color:var(--muted);}
+    .qty-stepper{display:flex;align-items:center;gap:6px;margin-top:4px;}
+    .qty-stepper button{width:34px;height:34px;padding:0;font-size:16px;background:var(--sky);color:var(--navy);}
+    .qty-stepper span{min-width:24px;text-align:center;font-weight:700;}
+    .line-item{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:10px 0;border-bottom:1px solid var(--line);font-size:14px;
+    }
+    .line-item .remove{color:var(--danger);font-size:12px;background:none;padding:6px;}
+    .totals{margin-top:12px;font-size:14px;}
+    .totals .grand{font-size:18px;font-weight:700;color:var(--navy);border-top:2px solid var(--sky);padding-top:8px;margin-top:8px;}
+    .totals .row-line{display:flex;justify-content:space-between;align-items:center;padding:3px 0;}
+    .empty{color:var(--muted);text-align:center;padding:22px 0;font-size:14px;}
+    nav.tabbar{
+      background:#fff;display:flex;border-top:1px solid var(--line);
+      box-shadow:0 -4px 16px rgba(47,65,86,.08);
+    }
+    nav.tabbar button{
+      flex:1;background:none;border-radius:0;padding:10px 0;font-size:11px;
+      color:var(--muted);font-weight:600;
+    }
+    nav.tabbar button.active{color:var(--navy);background:var(--sky-soft);box-shadow:inset 0 3px 0 var(--teal);}
+    .toast{
+      position:fixed;bottom:calc(80px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);
+      background:var(--navy);color:#fff;padding:10px 18px;border-radius:24px;font-size:13px;
+      box-shadow:0 6px 18px rgba(36,52,71,.35);
+      opacity:0;transition:opacity .25s;z-index:50;pointer-events:none;
+    }
+    .toast.show{opacity:1;}
+    .modal-overlay{
+      position:fixed;inset:0;background:rgba(47,65,86,.55);display:none;
+      align-items:center;justify-content:center;z-index:100;padding:16px;
+    }
+    .modal-overlay.show{display:flex;}
+    .modal{background:#fff;border-radius:18px;max-width:340px;width:100%;max-height:85vh;overflow-y:auto;padding:18px;box-shadow:0 18px 50px rgba(36,52,71,.35);}
+    .modal h3{margin-top:0;color:var(--navy);font-size:16px;text-transform:none;letter-spacing:0;}
+    #receiptFrame{width:100%;height:60vh;border:1px solid var(--line);border-radius:10px;}
+    .spinner{text-align:center;padding:20px;color:var(--muted);font-size:13px;}
+    .searchInput{margin-bottom:0;}
+    .hint{font-size:12px;color:var(--muted);margin:-2px 0 8px;line-height:1.45;}
+    .low{color:var(--danger);font-weight:700;}
+    .cat-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);}
+    .cat-row:last-child{border-bottom:none;}
+    .cat-row input[type=text]{margin:0;flex:1;min-width:0;}
+    .cat-on{display:flex;align-items:center;gap:5px;margin:0;white-space:nowrap;font-size:12px;}
+    .cat-on input{width:auto;margin:0;accent-color:var(--teal);}
+    .cat-row button{padding:9px 12px;font-size:13px;}
+
+    /* ===== REPORT ===== */
+    .chips{display:flex;gap:6px;margin:2px 0 12px;flex-wrap:wrap;}
+    .chips button{flex:1;padding:8px 6px;font-size:13px;}
+    .tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+    .tile{background:var(--beige);border-radius:12px;padding:12px;border:1px solid var(--line);}
+    .tile .t-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;}
+    .tile .t-value{font-size:19px;font-weight:700;margin-top:3px;word-break:break-word;color:var(--navy);}
+    .rep-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 2px;}
+    .rep-line{display:flex;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px;}
+    .rep-line:last-child{border-bottom:none;}
+    .rep-line .sub{font-size:12px;color:var(--muted);}
+
+    /* ===== BACKGROUND SETTINGS (edit here) =====
+       Plain colour: change --beige near the top of this file.
+       Image background: set --bg-image below to url("...") — a data: URI works
+       best in Apps Script. */
+    :root{
+      --bg-image:none;
+      --bg-size:min(86vw,520px) auto;
+      --bg-position:center 48%;
+      --bg-opacity:.5;
+    }
+    body::before{
+      content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+      background-image:var(--bg-image);background-repeat:no-repeat;
+      background-position:var(--bg-position);background-size:var(--bg-size);
+      opacity:var(--bg-opacity);
+    }
+
+    /* ===== LAYOUT: fixed header + tab bar, page scrolls normally ===== */
+    body{
+      padding-top:56px;
+      padding-bottom:calc(70px + env(safe-area-inset-bottom));
+      min-height:100vh;
+    }
+    header{position:fixed;top:0;left:0;right:0;height:56px;padding:0 16px;z-index:30;}
+    nav.tabbar{
+      position:fixed;bottom:0;left:0;right:0;z-index:30;
+      height:calc(60px + env(safe-area-inset-bottom));
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    .pinned{position:static;}
+    .dropdown-list{max-height:40vh;}
+
+    /* Printing / saving as PDF from the phone's print dialog: receipt only, not the app screen */
+    @media print{
+      body *{visibility:hidden;}
+      header,#scrollArea,nav.tabbar,.toast,#receiptModalTitle,#receiptSpinner,#receiptModal .row,#archiveBtn{display:none !important;}
+      body::before{display:none !important;}
+      #receiptFrame{visibility:visible;border:none !important;border-radius:0 !important;width:100% !important;}
+      html,body{height:auto !important;overflow:visible !important;background:#fff !important;padding:0 !important;}
+      .modal-overlay{position:static !important;display:block !important;background:none !important;padding:0 !important;}
+      .modal{max-height:none !important;overflow:visible !important;max-width:none !important;width:100% !important;padding:0 !important;border-radius:0 !important;box-shadow:none !important;}
+    }
+  

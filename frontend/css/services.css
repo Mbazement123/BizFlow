@@ -1,0 +1,151 @@
+    /* ====== BRAND PALETTE ======
+       Navy #2F4156 (headers, navigation)   Teal #567C8D (buttons, interactive)
+       Beige #F5EFEB (page background)      Sky Blue #C8D9E6 (subtle highlights)
+       White #FFFFFF (cards, forms)                                              */
+    :root {
+      --navy: #2F4156;
+      --navy-dark: #243447;
+      --teal: #567C8D;
+      --teal-dark: #456676;
+      --beige: #F5EFEB;
+      --sky: #C8D9E6;
+      --sky-soft: #E6EEF4;
+      --bg: var(--beige);
+      --card: #FFFFFF;
+      --text: #2F4156;
+      --muted: #6F8595;
+      --danger: #B3453B;
+      --border: #E3EAF0;
+      --shadow: 0 1px 2px rgba(47,65,86,.06), 0 6px 18px rgba(47,65,86,.07);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.4;
+    }
+    #app { display: flex; flex-direction: column; height: 100vh; }
+    header.topbar {
+      background: var(--navy); color: #fff;
+      padding: 12px 16px; font-weight: 700; font-size: 17px;
+      display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(36,52,71,.28); z-index: 5;
+    }
+    header.topbar small {
+      display: block; font-weight: 500; font-size: 11px; color: var(--sky);
+      letter-spacing: .06em; text-transform: uppercase; margin-top: 2px;
+    }
+    main {
+      flex: 1; overflow-y: auto; padding: 14px 12px 90px;
+    }
+    .screen { display: none; }
+    .screen.active { display: block; }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+    }
+    .card h3 {
+      margin: 0 0 12px; font-size: 12px; font-weight: 700; color: var(--teal);
+      text-transform: uppercase; letter-spacing: .08em;
+    }
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 4px; }
+    input, select, textarea {
+      width: 100%; padding: 11px 12px; border: 1px solid #D5E0E9;
+      border-radius: 10px; font-size: 15px; background: #fff; color: var(--text);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px rgba(86,124,141,.18);
+    }
+    input::placeholder, textarea::placeholder { color: #9AACB9; }
+    input[type=checkbox] { accent-color: var(--teal); }
+    textarea { resize: vertical; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    button {
+      border: none; border-radius: 10px; padding: 12px 14px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: background .15s, transform .05s;
+    }
+    button:active { transform: scale(.985); }
+    .btn-primary { background: var(--teal); color: #fff; width: 100%; box-shadow: 0 2px 6px rgba(86,124,141,.35); }
+    .btn-primary:active { background: var(--teal-dark); }
+    .btn-secondary { background: var(--sky); color: var(--navy); }
+    .btn-secondary:active { background: #B5CCDC; }
+    .btn-danger { background: #F4E1DE; color: var(--danger); }
+    .btn-small { padding: 7px 11px; font-size: 13px; }
+    .btn-block { width: 100%; margin-top: 10px; }
+    .item-row {
+      display: flex; align-items: center; gap: 8px; padding: 10px 0;
+      border-bottom: 1px solid var(--border); font-size: 14px;
+    }
+    .item-row:last-child { border-bottom: none; }
+    .item-row .name { flex: 1; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .total-line {
+      display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px;
+    }
+    .total-line.grand {
+      font-size: 18px; font-weight: 700; color: var(--navy);
+      border-top: 2px solid var(--sky); margin-top: 8px; padding-top: 10px;
+    }
+    .customer-hit {
+      padding: 10px; border-bottom: 1px solid var(--border); font-size: 14px; cursor: pointer;
+    }
+    .customer-hit:active { background: var(--sky-soft); }
+    .customer-hit b { display: block; }
+    .customer-hit small { color: var(--muted); }
+    .pill {
+      display: inline-block; padding: 2px 9px; border-radius: 20px;
+      background: var(--sky); color: var(--navy); font-size: 11px; font-weight: 700; margin-left: 6px;
+    }
+    nav.tabbar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff; border-top: 1px solid var(--border); box-shadow: 0 -4px 16px rgba(47,65,86,.08);
+      display: flex; padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    }
+    nav.tabbar button {
+      flex: 1; background: none; color: var(--muted); font-size: 11px; font-weight: 600;
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      padding: 6px 2px; border-radius: 10px;
+    }
+    nav.tabbar button .ic { font-size: 18px; }
+    nav.tabbar button.active { color: var(--navy); background: var(--sky-soft); box-shadow: inset 0 -3px 0 var(--teal); }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(47,65,86,.55);
+      display: none; align-items: center; justify-content: center; z-index: 50; padding: 14px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-sheet {
+      background: #fff; width: 100%; max-width: 400px;
+      border-radius: 18px; padding: 16px; max-height: 92vh; overflow-y: auto;
+      box-shadow: 0 18px 50px rgba(36,52,71,.35);
+    }
+    #receiptFrame {
+      display: block; width: 100%; height: 420px; border: 1px solid var(--border);
+      border-radius: 10px; background: #fff;
+    }
+    /* Printing: only the receipt (not the app screen) goes to the printer.
+       Do not display:none the modal - it is the receipt's ancestor. */
+    @media print {
+      body * { visibility: hidden; }
+      main, header.topbar, nav.tabbar, .toast, .modal-sheet .row { display: none !important; }
+      #receiptFrame { visibility: visible; border: none !important; border-radius: 0 !important; width: 100% !important; }
+      html, body, #app { height: auto !important; overflow: visible !important; background: #fff !important; }
+      .modal-backdrop { position: static !important; display: block !important; background: none !important; padding: 0 !important; }
+      .modal-sheet { max-height: none !important; overflow: visible !important; max-width: none !important; width: 100% !important; padding: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+    }
+    .tap { cursor: pointer; }
+    .tap:active { background: var(--sky-soft); }
+    .chips { display: flex; gap: 6px; margin: 10px 0; }
+    .chips button { flex: 1; padding: 8px 4px; font-size: 13px; }
+    .toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      background: var(--navy); color: #fff; padding: 10px 18px; border-radius: 24px;
+      font-size: 13px; z-index: 100; opacity: 0; transition: opacity .2s; pointer-events: none;
+      box-shadow: 0 6px 18px rgba(36,52,71,.35);
+    }
+    .toast.show { opacity: 1; }
+    .empty { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 13px; }
+  

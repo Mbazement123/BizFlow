@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+  <title>Soft Services</title>
+  <link rel="stylesheet" href="css/services.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div>
+      <span id="hdrBiz">Soft Services</span>
+      <small id="hdrTitle">New Sale</small>
+    </div>
+    <span id="hdrDate" class="muted" style="color:#fff;opacity:.85;font-size:12px;"></span>
+  </header>
+
+  <main>
+
+    <!-- ===== NEW SALE ===== -->
+    <section id="screen-sale" class="screen active">
+      <div class="card">
+        <h3>Customer</h3>
+        <div id="selectedCustomerBox" style="display:none;">
+          <div class="item-row">
+            <div class="name">
+              <b id="selCustName"></b>
+              <div class="muted" id="selCustPhone"></div>
+            </div>
+            <button class="btn-secondary btn-small" onclick="clearCustomer()">Change</button>
+          </div>
+        </div>
+        <div id="customerSearchBox">
+          <input type="text" inputmode="text" id="customerSearch" placeholder="Search by name or phone number..." oninput="onCustomerSearch()" autocomplete="off">
+          <div id="customerResults"></div>
+          <button class="btn-secondary btn-block" onclick="openNewCustomerForm()">+ New Customer</button>
+        </div>
+        <div id="newCustomerForm" style="display:none;">
+          <label>Name</label>
+          <input type="text" id="ncName" placeholder="Customer name">
+          <label>Phone (required - unique per customer)</label>
+          <input type="tel" id="ncPhone" placeholder="Phone number" onblur="checkPhoneDuplicate()" oninput="hidePhoneWarning()">
+          <div id="ncPhoneWarning" class="muted" style="display:none;color:var(--danger);margin-top:4px;"></div>
+          <label>Address (optional)</label>
+          <input type="text" id="ncAddress" placeholder="Address">
+          <div class="row" style="margin-top:8px;">
+            <button class="btn-secondary" onclick="cancelNewCustomer()">Cancel</button>
+            <button class="btn-primary" onclick="confirmNewCustomer()">Use this customer</button>
+          </div>
+        </div>
+        <div class="muted" id="walkinNote" style="margin-top:6px;">Or leave blank for a walk-in sale.</div>
+      </div>
+
+      <div class="card">
+        <h3>Add Services</h3>
+        <label>Service</label>
+        <select id="serviceSelect"></select>
+        <div class="row">
+          <div>
+            <label>Qty</label>
+            <input type="number" id="serviceQty" value="1" min="1">
+          </div>
+          <div>
+            <label>Unit Price</label>
+            <input type="number" id="servicePrice" value="0" min="0">
+          </div>
+        </div>
+        <button class="btn-secondary btn-block" onclick="addItem()">+ Add to Sale</button>
+      </div>
+
+      <div class="card">
+        <h3>Sale Items</h3>
+        <div id="saleItems"><div class="empty">No services added yet.</div></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:8px 0;">
+        <div class="total-line"><span>Subtotal</span><span id="sumSubtotal">0</span></div>
+        <label>Discount (%)</label>
+        <input type="number" id="discountInput" value="0" min="0" max="100" step="any" inputmode="decimal" oninput="renderTotals()">
+        <div class="total-line"><span id="discLabel">Discount</span><span id="sumDiscount">0</span></div>
+        <label>Payment Method</label>
+        <select id="paymentMethod">
+          <option>Cash</option>
+          <option>Transfer</option>
+          <option>Card</option>
+          <option>Other</option>
+        </select>
+        <div class="total-line grand"><span>Total</span><span id="sumTotal">0</span></div>
+        <button class="btn-primary btn-block" onclick="submitSale()">Save & Print Receipt</button>
+      </div>
+    </section>
+
+    <!-- ===== CUSTOMERS ===== -->
+    <section id="screen-customers" class="screen">
+      <div class="card">
+        <h3>Add Customer</h3>
+        <label>Phone (required - unique per customer)</label>
+        <input type="tel" id="cpPhone" placeholder="Phone number">
+        <label>Name</label>
+        <input type="text" id="cpName" placeholder="Customer name">
+        <label>Address (optional)</label>
+        <input type="text" id="cpAddress" placeholder="Address">
+        <button class="btn-primary btn-block" onclick="saveCustomerPage()">Save Customer</button>
+      </div>
+      <div class="card">
+        <h3>Find Customer</h3>
+        <input type="text" inputmode="text" id="custPageSearch" placeholder="Search by name or phone number..." oninput="applyCustFilter()" autocomplete="off">
+      </div>
+      <div id="custHistoryCard" class="card" style="display:none;">
+        <h3 id="custHistoryTitle">History</h3>
+        <div id="custHistoryList"></div>
+      </div>
+      <div class="card">
+        <h3>All Customers <span class="pill" id="custCount"></span></h3>
+        <div class="muted" style="margin-bottom:6px;">Total spent so far, biggest first. Tap a customer to see their sales.</div>
+        <div id="custListBox"><div class="empty">Loading...</div></div>
+      </div>
+    </section>
+
+    <!-- ===== EXPENSES ===== -->
+    <section id="screen-expenses" class="screen">
+      <div class="card">
+        <h3>Record Expense</h3>
+        <label>Date</label>
+        <input type="date" id="expDate">
+        <label>Category</label>
+        <select id="expCategory"></select>
+        <label>Description</label>
+        <input type="text" id="expDescription" placeholder="e.g. 2 gallons of solvent">
+        <label>Amount</label>
+        <input type="number" id="expAmount" min="0" value="0">
+        <button class="btn-primary btn-block" onclick="submitExpense()">Save Expense</button>
+      </div>
+      <div class="card">
+        <h3>Recent Expenses</h3>
+        <div id="expensesList"><div class="empty">No expenses recorded yet.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== REPORTS ===== -->
+    <section id="screen-reports" class="screen">
+      <div class="card">
+        <h3>Report</h3>
+        <div class="row">
+          <div><label>From</label><input type="date" id="repFrom" onchange="loadReport()"></div>
+          <div><label>To</label><input type="date" id="repTo" onchange="loadReport()"></div>
+        </div>
+        <div class="chips">
+          <button class="btn-secondary" onclick="setRepRange('today')">Today</button>
+          <button class="btn-secondary" onclick="setRepRange('week')">7 Days</button>
+          <button class="btn-secondary" onclick="setRepRange('month')">This Month</button>
+          <button class="btn-secondary" onclick="setRepRange('all')">All</button>
+        </div>
+        <div class="total-line" style="margin-top:6px;"><span>Sales</span><span id="repSalesCount">0</span></div>
+        <div class="total-line"><span>Total Sales</span><span id="repTotalSales">0</span></div>
+        <div class="total-line"><span>Total Expenses</span><span id="repTotalExpenses">0</span></div>
+        <div class="total-line grand"><span>Net</span><span id="repNet">0</span></div>
+      </div>
+      <div class="card">
+        <h3>Sales in this range</h3>
+        <div id="repSalesList"><div class="empty">No sales.</div></div>
+      </div>
+    </section>
+
+    <!-- ===== SETTINGS ===== -->
+    <section id="screen-settings" class="screen">
+      <div class="card">
+        <h3>Business Info (shown on receipts)</h3>
+        <label>Business Name</label>
+        <input type="text" id="setName">
+        <label>Address</label>
+        <input type="text" id="setAddress">
+        <label>Phone</label>
+        <input type="text" id="setPhone">
+        <label>Currency Symbol</label>
+        <input type="text" id="setCurrency">
+        <label>Receipt Footer Message</label>
+        <textarea id="setFooter" rows="2"></textarea>
+        <button class="btn-primary btn-block" onclick="saveSettings()">Save Settings</button>
+      </div>
+
+      <div class="card">
+        <h3>Manage Services</h3>
+        <div id="servicesManageList"><div class="empty">Loading...</div></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">
+        <label>New Service Name</label>
+        <input type="text" id="newSvcName" placeholder="e.g. Express Service">
+        <label>Price</label>
+        <input type="number" id="newSvcPrice" min="0" value="0">
+        <button class="btn-secondary btn-block" onclick="createService()">+ Add Service</button>
+      </div>
+
+      <div class="card">
+        <h3>Expense Categories</h3>
+        <div class="muted" style="margin-bottom:6px;">These appear in the Expenses form. Untick Active to hide one (past expenses keep it).</div>
+        <div id="categoriesManageList"><div class="empty">Loading...</div></div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:10px 0;">
+        <label>New Category Name</label>
+        <input type="text" id="newCatName" placeholder="e.g. Packaging">
+        <button class="btn-secondary btn-block" onclick="createCategory()">+ Add Category</button>
+      </div>
+
+      <div class="card">
+        <button class="btn-secondary btn-block" style="margin-top:0;" onclick="switchBusiness()">Switch business / app</button>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab-btn active" data-screen="sale" onclick="showScreen('sale')"><span class="ic">🧾</span>Sale</button>
+    <button class="tab-btn" data-screen="customers" onclick="showScreen('customers')"><span class="ic">👤</span>Customers</button>
+    <button class="tab-btn" data-screen="expenses" onclick="showScreen('expenses')"><span class="ic">💸</span>Expenses</button>
+    <button class="tab-btn" data-screen="reports" onclick="showScreen('reports')"><span class="ic">📊</span>Reports</button>
+    <button class="tab-btn" data-screen="settings" onclick="showScreen('settings')"><span class="ic">⚙️</span>Settings</button>
+  </nav>
+</div>
+
+<div class="modal-backdrop" id="receiptModal">
+  <div class="modal-sheet">
+    <iframe id="receiptFrame" title="Receipt"></iframe>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn-secondary" onclick="finishReceipt()">Done</button>
+      <button class="btn-secondary" onclick="shareReceipt()">Share PDF</button>
+      <button class="btn-primary" onclick="printReceipt()">Print</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/config.js"></script>
+<script src="js/gas-shim.js"></script>
+<script src="js/services.js"></script>
+</body>
+</html>

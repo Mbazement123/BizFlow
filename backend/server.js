@@ -86,7 +86,9 @@ app.get('/', (req, res) => res.type('text').send('API is running.'));
 app.get('/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
-    res.json({ ok: true });
+    // Non-secret mail config summary so misconfiguration is visible at a glance.
+    const mail = require('./src/mailer').configSummary();
+    res.json({ ok: true, mail });
   } catch (e) {
     res.status(503).json({ ok: false, error: 'database unavailable' });
   }

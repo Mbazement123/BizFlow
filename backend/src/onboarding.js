@@ -15,6 +15,12 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
 const OTP_TTL_MS = 10 * 60 * 1000;           // 10m
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS || 168) * 60 * 60 * 1000;
 
+// Email verification toggle. Set REQUIRE_EMAIL_VERIFICATION=false to activate accounts
+// immediately on signup (no email needed). Default: enabled.
+function emailVerificationRequired() {
+  return String(process.env.REQUIRE_EMAIL_VERIFICATION || '').toLowerCase() !== 'false';
+}
+
 // The verification link must point at the BACKEND (where /api/onboard/verify lives),
 // so it uses PUBLIC_BACKEND_URL. The post-verify redirect target (frontend) is APP_BASE_URL.
 function backendUrl() {
@@ -139,6 +145,33 @@ async function seedSales(client, bizId, name) {
   }
 }
 
+// Provision one business row per app for an account (idempotent), then optionally activate.
+// Shared by verifyEmail() and register() (when verification is disabled).
+async function provisionAccount(client, accountId, businessName, appVersion, activate) {
+  const apps = APP_VERSION_TO_APPS[appVersion] || ['SALES'];
+  let code = null;
+  const existingBiz = await client.query('SELECT code FROM businesses WHERE account_id = $1 LIMIT 1', [accountId]);
+  if (existingBiz.rows.length) code = existingBiz.rows[0].code;
+
+  for (const app of apps) {
+    const already = await client.query('SELECT id FROM businesses WHERE account_id = $1 AND app = $2 LIMIT 1', [accountId, app]);
+    let bizId;
+    if (already.rows.length) {
+      bizId = already.rows[0].id;
+    } else {
+      if (!code) code = await generateBusinessCode(client);
+      bizId = await createBusinessRow(client, accountId, code, businessName, app);
+    }
+    if (app === 'SERVICES') await seedServices(client, bizId, businessName);
+    if (app === 'SALES') await seedSales(client, bizId, businessName);
+  }
+
+  if (activate) {
+    await client.query("UPDATE accounts SET status = 'ACTIVE', verified_at = now() WHERE id = $1", [accountId]);
+  }
+  return code;
+}
+
 // ---------------------------------------------------------------
 // Register
 // ---------------------------------------------------------------
@@ -162,6 +195,7 @@ async function register(body) {
   }
 
   const passwordHash = hashPassword(password);
+  const requireVerify = emailVerificationRequired();
 
   let accountId;
   const token = randomToken(32);
@@ -170,12 +204,13 @@ async function register(body) {
   await withTransaction(async client => {
     if (!created) {
       // Guard the race: ON CONFLICT on the unique lower(email) index.
+      const initialStatus = requireVerify ? 'PENDING' : 'ACTIVE';
       const ins = await client.query(
         `INSERT INTO accounts (email, password_hash, business_name, app_version, status)
-         VALUES ($1,$2,$3,$4,'PENDING')
+         VALUES ($1,$2,$3,$4,$5)
          ON CONFLICT (lower(email)) DO NOTHING
          RETURNING id`,
-        [email, passwordHash, name, appVersion]
+        [email, passwordHash, name, appVersion, initialStatus]
       );
       if (!ins.rows.length) {
         // Someone created it between our check and now.
@@ -198,13 +233,27 @@ async function register(body) {
       );
     }
 
-    // Invalidate previous tokens; insert a fresh verification token.
-    await client.query('UPDATE email_verifications SET consumed_at = now() WHERE account_id = $1 AND consumed_at IS NULL', [accountId]);
-    await client.query(
-      'INSERT INTO email_verifications (account_id, token_hash, expires_at) VALUES ($1,$2,$3)',
-      [accountId, tokenHash, new Date(Date.now() + VERIFY_TTL_MS)]
-    );
+    if (requireVerify) {
+      // Invalidate previous tokens; insert a fresh verification token.
+      await client.query('UPDATE email_verifications SET consumed_at = now() WHERE account_id = $1 AND consumed_at IS NULL', [accountId]);
+      await client.query(
+        'INSERT INTO email_verifications (account_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+        [accountId, tokenHash, new Date(Date.now() + VERIFY_TTL_MS)]
+      );
+    } else {
+      // Verification disabled: provision the workspace(s) and activate immediately.
+      await provisionAccount(client, accountId, name, appVersion, true);
+    }
   });
+
+  if (!requireVerify) {
+    return {
+      status: 'active',
+      emailDelivered: true,
+      message: 'Your account is ready. You can log in now.',
+      email
+    };
+  }
 
   const link = backendUrl() + '/api/onboard/verify?token=' + encodeURIComponent(token);
   let emailDelivered = true;
@@ -257,8 +306,6 @@ async function verifyEmail(token) {
     return { status: 'active', message: 'Your account is already active. You can log in.' };
   }
 
-  const apps = APP_VERSION_TO_APPS[row.app_version] || ['SALES'];
-
   await withTransaction(async client => {
     // Claim the token atomically (prevents double-verify race).
     const claim = await client.query(
@@ -271,26 +318,7 @@ async function verifyEmail(token) {
       throw e;
     }
 
-    // Provision one business row per app. Reuse an existing code for the same account.
-    let code = null;
-    const existingBiz = await client.query('SELECT code FROM businesses WHERE account_id = $1 LIMIT 1', [row.account_id]);
-    if (existingBiz.rows.length) code = existingBiz.rows[0].code;
-
-    for (const app of apps) {
-      const already = await client.query('SELECT id FROM businesses WHERE account_id = $1 AND app = $2 LIMIT 1', [row.account_id, app]);
-      let bizId;
-      if (already.rows.length) {
-        bizId = already.rows[0].id;
-      } else {
-        if (!code) code = await generateBusinessCode(client);
-        bizId = await createBusinessRow(client, row.account_id, code, row.business_name, app);
-      }
-      if (app === 'SERVICES') await seedServices(client, bizId, row.business_name);
-      if (app === 'SALES') await seedSales(client, bizId, row.business_name);
-    }
-
-    // Activate the account.
-    await client.query('UPDATE accounts SET status = $1, verified_at = now() WHERE id = $2', ['ACTIVE', row.account_id]);
+    await provisionAccount(client, row.account_id, row.business_name, row.app_version, true);
   });
 
   return { status: 'active', message: 'Your email is verified and your workspace is ready. Please log in.' };

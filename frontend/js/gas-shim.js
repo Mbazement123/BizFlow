@@ -24,6 +24,34 @@
     }).finally(function () { clearTimeout(timer); });
   }
 
+  // Bearer session token (set after email/password login) is attached to data calls.
+  function authHeaders() {
+    try {
+      var t = localStorage.getItem('bizSession');
+      return t ? { 'Authorization': 'Bearer ' + t } : {};
+    } catch (e) { return {}; }
+  }
+
+  function postWithAuth(path, body) {
+    var headers = { 'Content-Type': 'application/json' };
+    var extra = authHeaders();
+    for (var k in extra) headers[k] = extra[k];
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 70000);
+    return fetch(API + path, {
+      method: 'POST', headers: headers, body: JSON.stringify(body), signal: ctrl.signal
+    }).then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: 'Server error (' + r.status + ')' }; });
+    }).then(function (j) {
+      if (!j.ok) throw new Error(j.error || 'Request failed');
+      return j.result;
+    }).catch(function (e) {
+      if (e && e.name === 'AbortError') throw new Error('The server took too long to answer. Please try again.');
+      if (e instanceof TypeError) throw new Error('Cannot reach the server. Check your internet connection and try again.');
+      throw e;
+    }).finally(function () { clearTimeout(timer); });
+  }
+
   function runner(ok, fail) {
     return new Proxy({}, {
       get: function (_, name) {
@@ -32,7 +60,7 @@
         if (name === 'withUserObject') return function () { return runner(ok, fail); };
         return function () {
           var a = Array.prototype.slice.call(arguments), p;
-          if (name === 'api') p = post('/api/call', { code: a[0], app: a[1], fn: a[2], args: a[3] });
+          if (name === 'api') p = postWithAuth('/api/call', { code: a[0], app: a[1], fn: a[2], args: a[3] });
           else if (name === 'checkBusiness') p = post('/api/check', { code: a[0], app: a[1] });
           else p = Promise.reject(new Error('Unknown action: ' + String(name)));
           p.then(function (r) { if (ok) ok(r); }, function (e) { if (fail) fail(e); else console.error(e); });

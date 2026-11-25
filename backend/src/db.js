@@ -1,6 +1,28 @@
 'use strict';
 // PostgreSQL connection pool + transaction helpers.
+const fs = require('fs');
+const path = require('path');
 const { Pool } = require('pg');
+
+// Load a local .env file if it exists (development). On hosts like Render the
+// variables come from the dashboard, so a missing .env is normal and never fatal.
+(function loadEnvIfPresent() {
+  const file = path.join(__dirname, '..', '.env');
+  try {
+    if (!fs.existsSync(file)) return;
+    const text = fs.readFileSync(file, 'utf8');
+    text.split(/\r?\n/).forEach(line => {
+      const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/.exec(line);
+      if (!m) return;                                  // skip blanks/comments
+      if (line.trim().startsWith('#')) return;
+      let val = m[2];
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      if (process.env[m[1]] === undefined) process.env[m[1]] = val;  // don't override real env
+    });
+  } catch (_) { /* ignore */ }
+})();
 
 let pool = null;
 

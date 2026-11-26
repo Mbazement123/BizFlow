@@ -29,19 +29,29 @@ let clientInstance = null;
 let dbInstance = null;
 
 async function getClient() {
-  if (clientInstance) return clientInstance;
+  if (clientInstance) {
+    try {
+      // Check if client is still connected / topology is open
+      if (clientInstance.topology && clientInstance.topology.isConnected()) {
+        return clientInstance;
+      }
+    } catch (_) {}
+    try { await clientInstance.close(); } catch (_) {}
+    clientInstance = null;
+    dbInstance = null;
+  }
   const url = process.env.MONGODB_URI || process.env.DATABASE_URL;
   if (!url) throw new Error('MONGODB_URI or DATABASE_URL is not set.');
   clientInstance = new MongoClient(url, {
     maxPoolSize: 10,
-    connectTimeoutMS: 8000
+    connectTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 10000
   });
   await clientInstance.connect();
   return clientInstance;
 }
 
 async function getDb() {
-  if (dbInstance) return dbInstance;
   const cli = await getClient();
   const url = process.env.MONGODB_URI || process.env.DATABASE_URL || '';
   let dbName = 'bizflow';

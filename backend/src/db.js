@@ -29,19 +29,29 @@ let clientInstance = null;
 let dbInstance = null;
 
 async function getClient() {
-  if (clientInstance) return clientInstance;
+  if (clientInstance) {
+    try {
+      // Check if client is still connected / topology is open
+      if (clientInstance.topology && clientInstance.topology.isConnected()) {
+        return clientInstance;
+      }
+    } catch (_) {}
+    try { await clientInstance.close(); } catch (_) {}
+    clientInstance = null;
+    dbInstance = null;
+  }
   const url = process.env.MONGODB_URI || process.env.DATABASE_URL;
   if (!url) throw new Error('MONGODB_URI or DATABASE_URL is not set.');
   clientInstance = new MongoClient(url, {
     maxPoolSize: 10,
-    connectTimeoutMS: 8000
+    connectTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 10000
   });
   await clientInstance.connect();
   return clientInstance;
 }
 
 async function getDb() {
-  if (dbInstance) return dbInstance;
   const cli = await getClient();
   const url = process.env.MONGODB_URI || process.env.DATABASE_URL || '';
   let dbName = 'bizflow';
@@ -111,7 +121,7 @@ async function query(text, params = []) {
   }
 
   // 2. ACCOUNTS
-  if (lower.includes('from accounts')) {
+  if (lower.includes('from accounts') || lower.startsWith('insert into accounts') || lower.startsWith('update accounts') || lower.startsWith('delete from accounts')) {
     const accountsCol = db.collection('accounts');
     if (lower.startsWith('select')) {
       if (lower.includes('lower(email) = lower($1)')) {
@@ -148,13 +158,35 @@ async function query(text, params = []) {
       return { rows: [{ id }] };
     }
     if (lower.startsWith('update accounts')) {
+      const set = {};
+      // Resolve the target account id: use WHERE id = $N when present, else the last numeric param.
+      let id = null;
+      const whereId = /where\s+id\s*=\s*\$(\d+)/i.exec(sql);
+      if (whereId) {
+        id = Number(params[Number(whereId[1]) - 1]);
+      } else {
+        const nums = params.filter(p => p !== null && p !== undefined && !isNaN(Number(p)));
+        if (nums.length) id = Number(nums[nums.length - 1]);
+      }
+
+      // status = 'ACTIVE' literal or status = $N parameter
       if (lower.includes("status = 'active'")) {
-        const id = Number(params[1]);
-        await accountsCol.updateOne({ id }, { $set: { status: 'ACTIVE', verified_at: new Date() } });
-      } else if (lower.includes('password_hash = $1')) {
-        const hash = params[0];
-        const id = Number(params[1]);
-        await accountsCol.updateOne({ id }, { $set: { password_hash: hash } });
+        set.status = 'ACTIVE';
+        set.verified_at = new Date();
+      } else {
+        const statusParam = /set\s+status\s*=\s*\$(\d+)/i.exec(sql);
+        if (statusParam) {
+          set.status = String(params[Number(statusParam[1]) - 1]);
+          set.verified_at = new Date();
+        }
+      }
+      if (lower.includes('password_hash = $1')) set.password_hash = params[0];
+      const hashParam = /set\s+password_hash\s*=\s*\$(\d+)/i.exec(sql);
+      if (hashParam) set.password_hash = params[Number(hashParam[1]) - 1];
+      if (lower.includes('business_name')) { /* no-op: not used on update paths */ }
+
+      if (id !== null && !isNaN(id) && Object.keys(set).length) {
+        await accountsCol.updateOne({ id }, { $set: set });
       }
       return { rows: [] };
     }
@@ -166,7 +198,7 @@ async function query(text, params = []) {
   }
 
   // 3. BUSINESSES
-  if (lower.includes('from businesses')) {
+  if (lower.includes('from businesses') || lower.startsWith('insert into businesses') || lower.startsWith('delete from businesses')) {
     const bizCol = db.collection('businesses');
     if (lower.startsWith('select')) {
       if (lower.includes('code = $1 and app = $2')) {
@@ -737,7 +769,7 @@ async function query(text, params = []) {
     }
   }
 
-  if (lower.includes('from sessions')) {
+  if (lower.includes('from sessions') || lower.startsWith('insert into sessions') || lower.startsWith('delete from sessions')) {
     const coll = db.collection('sessions');
     if (lower.startsWith('select')) {
       if (lower.includes('token_hash = $1')) {
@@ -780,20 +812,11 @@ function escapeRegExp(string) {
 }
 
 async function withTransaction(fn) {
-  const client = await getClient();
-  const session = client.startSession();
-  try {
-    session.startTransaction();
-    const mockClient = new MongoDbClient(await getDb());
-    const result = await fn(mockClient);
-    await session.commitTransaction();
-    return result;
-  } catch (e) {
-    try { await session.abortTransaction(); } catch (_) {}
-    throw e;
-  } finally {
-    await session.endSession();
-  }
+  // The Mongo "SQL emulator" cannot bind queries to a real session, so a true transaction
+  // is not possible here. Run the callback directly (no session) to avoid failures on
+  // deployments without a replica set. Callers still get a client-like object.
+  const mockClient = new MongoDbClient(await getDb());
+  return fn(mockClient);
 }
 
 async function close() {

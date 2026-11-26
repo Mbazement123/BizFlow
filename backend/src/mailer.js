@@ -1,47 +1,59 @@
 'use strict';
-// Email sending via Resend (https://resend.com). If RESEND_API_KEY is not set,
-// emails are logged to the console instead of sent (safe for local/dev/testing).
+// Email sending via Brevo SMTP (nodemailer).
+// Supports SMTP configuration via SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM.
+// If not configured, emails are logged to the console instead of sent (safe for local/dev/testing).
 
-const API_URL = 'https://api.resend.com/emails';
+const nodemailer = require('nodemailer');
 
-// Last delivery error (message only), exposed via /health for diagnostics.
 let lastError = null;
 let lastSentAt = null;
 
 function isConfigured() {
-  return Boolean(process.env.RESEND_API_KEY);
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
+
+function getTransporter() {
+  const host = process.env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = Number(process.env.SMTP_PORT || 587);
+  const user = process.env.SMTP_USER || '';
+  const pass = process.env.SMTP_PASS || '';
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // true for 465, false for other ports
+    auth: {
+      user,
+      pass
+    }
+  });
 }
 
 async function sendEmail({ to, subject, html, text }) {
-  const from = process.env.MAIL_FROM || 'Bizflow <onboarding@resend.dev>';
+  const from = process.env.MAIL_FROM || 'Bizflow <no-reply@bizflow.app>';
 
   if (!isConfigured()) {
     // Dev fallback: print the message so the flow is testable without a provider.
-    console.log('\n--- EMAIL (not sent: RESEND_API_KEY not set) ---');
+    console.log('\n--- EMAIL (not sent: SMTP not configured) ---');
     console.log('To:      ' + to);
     console.log('From:    ' + from);
     console.log('Subject: ' + subject);
     console.log(text || html);
     console.log('-----------------------------------------------\n');
-    lastError = 'RESEND_API_KEY not set';
+    lastError = 'SMTP not configured';
     return { delivered: false };
   }
 
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + process.env.RESEND_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ from, to: [to], subject, html, text })
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html
     });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      lastError = 'HTTP ' + res.status + ': ' + body.slice(0, 300);
-      throw new Error('Email provider error (' + res.status + '): ' + body.slice(0, 200));
-    }
     lastError = null;
     lastSentAt = new Date().toISOString();
     return { delivered: true };
@@ -74,24 +86,23 @@ function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Diagnostic: send a simple test email and return the provider outcome (or throw with its message).
 async function sendTest(to) {
   return sendEmail({
     to,
     subject: 'Bizflow test email',
-    html: '<p>This is a test email from your Bizflow backend. If you got this, Resend is configured correctly.</p>',
+    html: '<p>This is a test email from your Bizflow backend. If you got this, Brevo SMTP is configured correctly.</p>',
     text: 'This is a test email from your Bizflow backend.'
   });
 }
 
 function configSummary() {
-  const from = process.env.MAIL_FROM || 'Bizflow <onboarding@resend.dev>';
+  const from = process.env.MAIL_FROM || 'Bizflow <no-reply@bizflow.app>';
   const fromDomain = (from.match(/@([^>\s]+)/) || [])[1] || '';
   return {
-    hasApiKey: Boolean(process.env.RESEND_API_KEY),
+    hasSmtpConfig: isConfigured(),
+    host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
     from,
     fromDomain,
-    isSandboxSender: /^resend\.dev$/i.test(fromDomain),
     appBaseUrl: process.env.APP_BASE_URL || '',
     publicBackendUrl: process.env.PUBLIC_BACKEND_URL || '',
     lastError: lastError,
@@ -99,4 +110,10 @@ function configSummary() {
   };
 }
 
-module.exports = { sendVerificationEmail, sendOtpEmail, sendTest, configSummary, isConfigured };
+module.exports = {
+  sendEmail,
+  sendVerificationEmail,
+  sendOtpEmail,
+  sendTest,
+  configSummary
+};

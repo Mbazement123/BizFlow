@@ -3,7 +3,7 @@ services:
     name: business-manager-api
     runtime: node
     rootDir: backend
-    buildCommand: npm install && npm run migrate
+    buildCommand: npm install
     startCommand: node server.js
     healthCheckPath: /health
     plan: free
@@ -12,9 +12,13 @@ services:
         value: 20
       - key: DATABASE_PUBLIC_URL
         sync: false
-      - key: ALLOWED_ORIGINS
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
         sync: false
-      - key: ADMIN_TOKEN
+      - key: SMTP_PASS
         sync: false
-      - key: TZ_NAME
-        value: Africa/Lagos
+      - key: MAIL_FROM
+        sync: false

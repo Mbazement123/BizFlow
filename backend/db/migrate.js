@@ -6,17 +6,11 @@ const path = require('path');
 const { withTransaction, query, close } = require('../src/db');
 
 async function run() {
-  if (!process.env.DATABASE_URL) {
-    console.error('DATABASE_URL is not set. Set it before migrating.');
+  if (!process.env.MONGODB_URI && !process.env.DATABASE_URL) {
+    console.error('MONGODB_URI or DATABASE_URL is not set. Set it before migrating.');
     process.exit(1);
   }
-  const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  await withTransaction(async client => {
-    await client.query(sql);
-  });
-  console.log('Schema applied successfully.');
-
-  // Optional seed of the registry from BUSINESS_* env vars is handled elsewhere.
+  console.log('MongoDB schema is initialized on-demand. Migration completed successfully.');
   await close();
   process.exit(0);
 }

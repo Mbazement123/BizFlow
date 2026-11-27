@@ -479,6 +479,9 @@ async function query(text, params = []) {
     const coll = db.collection('sales_categories');
     const bizId = Number(params[0]);
     if (lower.startsWith('select')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ n: await coll.countDocuments({ business_id: bizId }) }] };
+      }
       const docs = await coll.find({ business_id: bizId }).toArray();
       return { rows: docs.map(transformDoc) };
     }
@@ -588,6 +591,9 @@ async function query(text, params = []) {
     const coll = db.collection('svc_services');
     const bizId = Number(params[0]);
     if (lower.startsWith('select')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ n: await coll.countDocuments({ business_id: bizId }) }] };
+      }
       if (lower.includes('service_id = $2')) {
         const doc = await coll.findOne({ business_id: bizId, service_id: params[1] });
         return { rows: doc ? [transformDoc(doc)] : [] };
@@ -625,6 +631,9 @@ async function query(text, params = []) {
     const coll = db.collection('svc_categories');
     const bizId = Number(params[0]);
     if (lower.startsWith('select')) {
+      if (lower.includes('count(*)')) {
+        return { rows: [{ n: await coll.countDocuments({ business_id: bizId }) }] };
+      }
       const docs = await coll.find({ business_id: bizId }).toArray();
       return { rows: docs.map(transformDoc) };
     }

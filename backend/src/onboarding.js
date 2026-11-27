@@ -34,7 +34,7 @@ function appsForAccount(appVersion, businesses) {
   const activeApps = new Set();
   businesses.forEach(b => {
     const app = String(b.app || '').toUpperCase();
-    if (app === 'SALES' || app === 'SERVICES') activeApps.add(app);
+    if (b.active === true && (app === 'SALES' || app === 'SERVICES')) activeApps.add(app);
   });
   const selectedApps = APP_VERSION_TO_APPS[appVersion] || Array.from(activeApps);
   return selectedApps.filter(app => activeApps.has(app)).map(app => app.toLowerCase());
@@ -76,10 +76,10 @@ async function generateBusinessCode(client) {
 }
 
 // Insert a business row for one app (Sales or Services) linked to the account.
-async function createBusinessRow(client, accountId, code, name, app) {
+async function createBusinessRow(client, code, name, app) {
   const ins = await client.query(
-    'INSERT INTO businesses (code, name, app, active, account_id) VALUES ($1,$2,$3,TRUE,$4) RETURNING id',
-    [code, name, app, accountId]
+    'INSERT INTO businesses (code, name, app, active, account_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [code, name, app, true, code]
   );
   return ins.rows[0].id;
 }
@@ -159,18 +159,20 @@ async function seedSales(client, bizId, name) {
 // Shared by verifyEmail() and register() (when verification is disabled).
 async function provisionAccount(client, accountId, businessName, appVersion, activate) {
   const apps = APP_VERSION_TO_APPS[appVersion] || ['SALES'];
-  let code = null;
-  const existingBiz = await client.query('SELECT code FROM businesses WHERE account_id = $1 LIMIT 1', [accountId]);
-  if (existingBiz.rows.length) code = existingBiz.rows[0].code;
+  const account = await client.query('SELECT business_code FROM accounts WHERE id = $1', [accountId]);
+  let code = account.rows[0] && account.rows[0].business_code;
+  if (!code) {
+    code = await generateBusinessCode(client);
+    await client.query('UPDATE accounts SET business_code = $1 WHERE id = $2', [code, accountId]);
+  }
 
   for (const app of apps) {
-    const already = await client.query('SELECT id FROM businesses WHERE account_id = $1 AND app = $2 LIMIT 1', [accountId, app]);
+    const already = await client.query('SELECT id FROM businesses WHERE account_id = $1 AND app = $2 LIMIT 1', [code, app]);
     let bizId;
     if (already.rows.length) {
       bizId = already.rows[0].id;
     } else {
-      if (!code) code = await generateBusinessCode(client);
-      bizId = await createBusinessRow(client, accountId, code, businessName, app);
+      bizId = await createBusinessRow(client, code, businessName, app);
     }
     if (app === 'SERVICES') await seedServices(client, bizId, businessName);
     if (app === 'SALES') await seedSales(client, bizId, businessName);
@@ -332,7 +334,7 @@ async function login(body) {
     throw e;
   }
 
-  const r = await query('SELECT id, password_hash, status, business_name, app_version FROM accounts WHERE lower(email) = lower($1)', [email]);
+  const r = await query('SELECT id, password_hash, status, business_name, business_code, app_version FROM accounts WHERE lower(email) = lower($1)', [email]);
   const acc = r.rows[0];
   // Uniform error to avoid account enumeration; constant-time-ish (always verify against something).
   if (!acc || !verifyPassword(password, acc.password_hash)) {
@@ -346,16 +348,65 @@ async function login(body) {
     throw e;
   }
 
-  const biz = await query(
-    'SELECT id, code, name, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id',
-    [acc.id]
-  );
-  let code = (biz.rows[0] && biz.rows[0].code) || '';
-  if (!code) {
-    // Legacy data safety: fall back to any business row this account owns.
-    const any = await query('SELECT code FROM businesses WHERE account_id = $1 LIMIT 1', [acc.id]);
-    code = (any.rows[0] && any.rows[0].code) || '';
+  if (APP_VERSION_TO_APPS[acc.app_version]) {
+    await withTransaction(async client => {
+      await client.query('SELECT id FROM accounts WHERE id = $1 FOR UPDATE', [acc.id]);
+      const current = await client.query('SELECT business_code FROM accounts WHERE id = $1', [acc.id]);
+      let businessCode = current.rows[0] && current.rows[0].business_code;
+
+      if (!businessCode) {
+        const legacyRows = await client.query(
+          'SELECT id, code, app FROM businesses WHERE account_id = $1 AND active = TRUE',
+          [String(acc.id)]
+        );
+        const orphaned = [];
+        if (!legacyRows.rows.length) {
+          for (const app of APP_VERSION_TO_APPS[acc.app_version]) {
+            const matches = await client.query(
+              `SELECT id, code, app FROM businesses
+               WHERE account_id IS NULL AND lower(name) = lower($1) AND app = $2 AND active = TRUE`,
+              [acc.business_name, app]
+            );
+            if (matches.rows.length > 1) {
+              const e = new Error('Multiple unlinked workspaces match this account. Please contact support to link the correct one.');
+              e.statusCode = 409;
+              throw e;
+            }
+            if (matches.rows.length === 1) orphaned.push(matches.rows[0]);
+          }
+        }
+
+        const matchesToLink = legacyRows.rows.length ? legacyRows.rows : orphaned;
+        const businessCodes = new Set(matchesToLink.map(b => b.code));
+        if (businessCodes.size > 1) {
+          const e = new Error('Unlinked workspaces have different business codes. Please contact support to link them safely.');
+          e.statusCode = 409;
+          throw e;
+        }
+
+        if (matchesToLink.length) {
+          businessCode = matchesToLink[0].code;
+          await client.query('UPDATE accounts SET business_code = $1 WHERE id = $2', [businessCode, acc.id]);
+          for (const business of matchesToLink) {
+            const oldAccountId = legacyRows.rows.length ? String(acc.id) : null;
+            await client.query(
+              oldAccountId
+                ? 'UPDATE businesses SET account_id = $1 WHERE id = $2 AND account_id = $3 RETURNING id'
+                : 'UPDATE businesses SET account_id = $1 WHERE id = $2 AND account_id IS NULL RETURNING id',
+              oldAccountId ? [businessCode, business.id, oldAccountId] : [businessCode, business.id]
+            );
+          }
+        }
+      }
+
+      await provisionAccount(client, acc.id, acc.business_name, acc.app_version, false);
+    });
   }
+  const account = await query('SELECT business_code FROM accounts WHERE id = $1', [acc.id]);
+  const code = account.rows[0] && account.rows[0].business_code;
+  const biz = code
+    ? await query('SELECT id, code, name, app, active FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id', [code])
+    : { rows: [] };
   const apps = appsForAccount(acc.app_version, biz.rows);
   if (!code || !apps.length) {
     const e = new Error('No active application workspace is linked to this account. Please contact support.');
@@ -434,19 +485,21 @@ async function resetPassword(body) {
 async function sessionFor(token) {
   if (!token) return null;
   const r = await query(
-    `SELECT s.account_id, s.expires_at, a.app_version
-     FROM sessions s JOIN accounts a ON a.id = s.account_id
-     WHERE s.token_hash = $1`,
+    'SELECT account_id, expires_at FROM sessions WHERE token_hash = $1',
     [sha256(String(token))]
   );
   if (!r.rows.length) return null;
   const row = r.rows[0];
   if (new Date(row.expires_at).getTime() < Date.now()) return null;
-  const biz = await query('SELECT code, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id', [row.account_id]);
+  const account = await query('SELECT app_version, business_code FROM accounts WHERE id = $1', [row.account_id]);
+  if (!account.rows.length) return null;
+  const businessCode = account.rows[0].business_code;
+  if (!businessCode) return null;
+  const biz = await query('SELECT code, app, active FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id', [businessCode]);
   if (!biz.rows.length) return null;
-  const apps = appsForAccount(row.app_version, biz.rows);
+  const apps = appsForAccount(account.rows[0].app_version, biz.rows);
   if (!apps.length) return null;
-  return { accountId: row.account_id, code: biz.rows[0].code, apps };
+  return { accountId: row.account_id, code: businessCode, apps };
 }
 
 module.exports = { register, verifyEmail, login, requestPasswordReset, resetPassword, sessionFor };

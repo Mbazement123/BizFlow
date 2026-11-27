@@ -107,18 +107,9 @@
     apiPost('/api/onboard/register', payload)
       .then(function (r) {
         busy(btn, false);
-        if (r && r.status === 'active') {
-          // Email verification is disabled: account is ready immediately.
-          document.getElementById('noticeTitle').textContent = 'Account created';
-          document.getElementById('noticeText').textContent = 'Your workspace is ready. Log in with your email and password.';
-          show('notice');
-          return;
-        }
-        var delivered = !r || r.emailDelivered !== false;
-        document.getElementById('noticeTitle').textContent = delivered ? 'Check your email' : 'Almost there';
-        document.getElementById('noticeText').textContent = delivered
-          ? 'We sent a verification link to ' + payload.email + '. Open it to activate your workspace, then log in. (Check spam if you do not see it.)'
-          : (r && r.message) || 'Your account was created, but the verification email could not be sent. Please try again in a moment.';
+        // Automatically log the user in or take them to login immediately since verification is non-compulsory
+        document.getElementById('noticeTitle').textContent = 'Account created successfully';
+        document.getElementById('noticeText').textContent = 'Your workspace is ready. You can log in now with your email and password.';
         show('notice');
       })
       .catch(function (e) { busy(btn, false); msg('signupMsg', e.message || 'Sign up failed.'); });

@@ -201,10 +201,21 @@ async function query(text, params = []) {
   }
 
   // 3. BUSINESSES
-  if (lower.includes('from businesses') || lower.startsWith('insert into businesses') || lower.startsWith('delete from businesses')) {
+  if (lower.includes('from businesses') || lower.startsWith('insert into businesses') || lower.startsWith('update businesses') || lower.startsWith('delete from businesses')) {
     const bizCol = db.collection('businesses');
     if (lower.startsWith('select')) {
       const filterActive = /\bactive\s*=\s*true\b/.test(lower);
+      if (lower.includes('account_id is null') && lower.includes('lower(name) = lower($1)')) {
+        const name = String(params[0] || '').trim();
+        const filter = {
+          account_id: null,
+          name: new RegExp('^' + escapeRegExp(name) + '$', 'i'),
+          app: params[1]
+        };
+        if (filterActive) filter.active = true;
+        const docs = await bizCol.find(filter).toArray();
+        return { rows: docs.map(transformDoc) };
+      }
       if (lower.includes('code = $1 and app = $2')) {
         const filter = { code: params[0], app: params[1] };
         if (filterActive) filter.active = true;
@@ -240,6 +251,15 @@ async function query(text, params = []) {
       };
       await bizCol.insertOne(doc);
       return { rows: [{ id }] };
+    }
+    if (lower.startsWith('update businesses')) {
+      const accountId = Number(params[0]);
+      const id = Number(params[1]);
+      const updated = await bizCol.updateOne(
+        { id, account_id: null },
+        { $set: { account_id: accountId } }
+      );
+      return { rows: updated.modifiedCount ? [{ id }] : [] };
     }
     if (lower.startsWith('delete from businesses')) {
       if (lower.includes('code = $1')) {

@@ -351,22 +351,43 @@ async function login(body) {
     [acc.id]
   );
   if (!biz.rows.length && APP_VERSION_TO_APPS[acc.app_version]) {
-    const linked = await query('SELECT id FROM businesses WHERE account_id = $1 LIMIT 1', [acc.id]);
-    if (!linked.rows.length) {
-      await withTransaction(async client => {
-        const linkedDuringProvision = await client.query(
-          'SELECT id FROM businesses WHERE account_id = $1 LIMIT 1',
-          [acc.id]
+    await withTransaction(async client => {
+      await client.query('SELECT id FROM accounts WHERE id = $1 FOR UPDATE', [acc.id]);
+      const linked = await client.query('SELECT id FROM businesses WHERE account_id = $1 LIMIT 1', [acc.id]);
+      if (linked.rows.length) return;
+
+      const orphaned = [];
+      for (const app of APP_VERSION_TO_APPS[acc.app_version]) {
+        const matches = await client.query(
+          `SELECT id, code, app FROM businesses
+           WHERE account_id IS NULL AND lower(name) = lower($1) AND app = $2 AND active = TRUE`,
+          [acc.business_name, app]
         );
-        if (!linkedDuringProvision.rows.length) {
-          await provisionAccount(client, acc.id, acc.business_name, acc.app_version, false);
+        if (matches.rows.length > 1) {
+          const e = new Error('Multiple unlinked workspaces match this account. Please contact support to link the correct one.');
+          e.statusCode = 409;
+          throw e;
         }
-      });
-      biz = await query(
-        'SELECT id, code, name, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id',
-        [acc.id]
-      );
-    }
+        if (matches.rows.length === 1) orphaned.push(matches.rows[0]);
+      }
+      if (new Set(orphaned.map(b => b.code)).size > 1) {
+        const e = new Error('Unlinked workspaces have different business codes. Please contact support to link them safely.');
+        e.statusCode = 409;
+        throw e;
+      }
+
+      for (const business of orphaned) {
+        await client.query(
+          'UPDATE businesses SET account_id = $1 WHERE id = $2 AND account_id IS NULL RETURNING id',
+          [acc.id, business.id]
+        );
+      }
+      await provisionAccount(client, acc.id, acc.business_name, acc.app_version, false);
+    });
+    biz = await query(
+      'SELECT id, code, name, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id',
+      [acc.id]
+    );
   }
   let code = (biz.rows[0] && biz.rows[0].code) || '';
   if (!code) {

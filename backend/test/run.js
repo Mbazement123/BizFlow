@@ -218,16 +218,25 @@ async function test(name, fn) {
     const list = await core.call({ code, app: 'sales', fn: 'getProductsList', args: [] });
     assert.ok(Array.isArray(list));
   });
-  await test('login provisions a missing workspace from the selected version', async () => {
+  await test('login links orphaned workspaces and provisions when none match', async () => {
     const acc = (await query('SELECT id FROM accounts WHERE lower(email)=lower($1)', [EMAIL])).rows[0];
     await query('DELETE FROM businesses WHERE account_id = $1', [acc.id]);
+    await query(
+      'INSERT INTO businesses (code, name, app, active, account_id) VALUES ($1,$2,$3,$4,$5)',
+      ['ORPHAN-' + CODE, 'Onboard Co', 'SALES', true, null]
+    );
 
     const recovered = await onboarding.login({ email: EMAIL, password: PASSWORD });
-    assert.ok(recovered.code);
+    assert.equal(recovered.code, 'ORPHAN-' + CODE);
     assert.deepEqual(recovered.apps, ['sales']);
 
     const linked = await query('SELECT app FROM businesses WHERE account_id = $1 AND active = TRUE', [acc.id]);
     assert.deepEqual(linked.rows.map(row => row.app), ['SALES']);
+
+    await query('DELETE FROM businesses WHERE account_id = $1', [acc.id]);
+    const provisioned = await onboarding.login({ email: EMAIL, password: PASSWORD });
+    assert.ok(provisioned.code);
+    assert.deepEqual(provisioned.apps, ['sales']);
   });
   await test('wrong password and unknown email give the same generic error', async () => {
     await assert.rejects(onboarding.login({ email: EMAIL, password: 'wrongwrong' }), /Incorrect email or password/);

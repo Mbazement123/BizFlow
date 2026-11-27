@@ -201,11 +201,17 @@ async function test(name, fn) {
 
     const login = await onboarding.login({ email: EMAIL, password: PASSWORD });
     assert.ok(login.session && login.code);
-    assert.deepEqual(login.apps.sort(), ['sales', 'services']);
+    assert.deepEqual(login.apps, ['sales', 'services']);
 
     // Session resolves to the same code (used to scope /api/call)
     const sess = await onboarding.sessionFor(login.session);
     assert.equal(sess.code, login.code);
+
+    // Login app access follows the selected version in the account record.
+    await query("UPDATE accounts SET app_version = 'SALES' WHERE id = $1", [acc.id]);
+    const salesOnlyLogin = await onboarding.login({ email: EMAIL, password: PASSWORD });
+    assert.deepEqual(salesOnlyLogin.apps, ['sales']);
+    assert.deepEqual((await onboarding.sessionFor(login.session)).apps, ['sales']);
 
     // The provisioned Sales workspace works and is independent
     const code = login.code;

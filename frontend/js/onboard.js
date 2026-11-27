@@ -107,10 +107,20 @@
     apiPost('/api/onboard/register', payload)
       .then(function (r) {
         busy(btn, false);
-        // Automatically log the user in or take them to login immediately since verification is non-compulsory
-        document.getElementById('noticeTitle').textContent = 'Account created successfully';
-        document.getElementById('noticeText').textContent = 'Your workspace is ready. You can log in now with your email and password.';
-        show('notice');
+        // Automatically log in after successful signup
+        return apiPost('/api/onboard/login', { email: payload.email, password: payload.password });
+      })
+      .then(function (r) {
+        try {
+          localStorage.setItem('bizCode', r.code || '');
+          if (r.session) localStorage.setItem('bizSession', r.session);
+          if (r.bizName) localStorage.setItem('bizName', r.bizName);
+        } catch (e) {}
+        if (r.apps && r.apps.length === 1) {
+          window.location.href = '/' + r.apps[0] + '.html?b=' + encodeURIComponent(r.code);
+        } else {
+          window.location.href = '/?b=' + encodeURIComponent(r.code) + '&pick=1';
+        }
       })
       .catch(function (e) { busy(btn, false); msg('signupMsg', e.message || 'Sign up failed.'); });
   });

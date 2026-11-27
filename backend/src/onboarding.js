@@ -15,10 +15,9 @@ const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;   // 24h
 const OTP_TTL_MS = 10 * 60 * 1000;           // 10m
 const SESSION_TTL_MS = Number(process.env.SESSION_TTL_HOURS || 168) * 60 * 60 * 1000;
 
-// Email verification toggle. Set REQUIRE_EMAIL_VERIFICATION=false to activate accounts
-// immediately on signup (no email needed). Default: enabled.
+// Email verification toggle. Set REQUIRE_EMAIL_VERIFICATION=true if you want strict enforcement. Default: false (non-compulsory).
 function emailVerificationRequired() {
-  return String(process.env.REQUIRE_EMAIL_VERIFICATION || '').toLowerCase() !== 'false';
+  return String(process.env.REQUIRE_EMAIL_VERIFICATION || '').toLowerCase() === 'true';
 }
 
 // The verification link must point at the BACKEND (where /api/onboard/verify lives),
@@ -203,8 +202,8 @@ async function register(body) {
 
   await withTransaction(async client => {
     if (!created) {
-      // Guard the race: ON CONFLICT on the unique lower(email) index.
-      const initialStatus = requireVerify ? 'PENDING' : 'ACTIVE';
+      // Guard the race: ON CONFLICT on the unique lower(email) index. Accounts are active immediately (verification non-compulsory).
+      const initialStatus = 'ACTIVE';
       const ins = await client.query(
         `INSERT INTO accounts (email, password_hash, business_name, app_version, status)
          VALUES ($1,$2,$3,$4,$5)
@@ -226,53 +225,39 @@ async function register(body) {
       }
     } else {
       accountId = created.id;
-      // Refresh password/name/app_version on the still-pending account.
+      // Refresh password/name/app_version on the account.
       await client.query(
-        'UPDATE accounts SET password_hash = $1, business_name = $2, app_version = $3 WHERE id = $4 AND status = $5',
-        [passwordHash, name, appVersion, accountId, 'PENDING']
+        'UPDATE accounts SET password_hash = $1, business_name = $2, app_version = $3, status = $4 WHERE id = $5',
+        [passwordHash, name, appVersion, 'ACTIVE', accountId]
       );
     }
 
-    if (requireVerify) {
-      // Invalidate previous tokens; insert a fresh verification token.
-      await client.query('UPDATE email_verifications SET consumed_at = now() WHERE account_id = $1 AND consumed_at IS NULL', [accountId]);
-      await client.query(
-        'INSERT INTO email_verifications (account_id, token_hash, expires_at) VALUES ($1,$2,$3)',
-        [accountId, tokenHash, new Date(Date.now() + VERIFY_TTL_MS)]
-      );
-    } else {
-      // Verification disabled: provision the workspace(s) and activate immediately.
-      await provisionAccount(client, accountId, name, appVersion, true);
-    }
+    // Always provision workspace(s) immediately on signup so user can log in right away.
+    await provisionAccount(client, accountId, name, appVersion, true);
+
+    // Also store verification token asynchronously/non-blockingly for optional verification email.
+    await client.query('UPDATE email_verifications SET consumed_at = now() WHERE account_id = $1 AND consumed_at IS NULL', [accountId]);
+    await client.query(
+      'INSERT INTO email_verifications (account_id, token_hash, expires_at) VALUES ($1,$2,$3)',
+      [accountId, tokenHash, new Date(Date.now() + VERIFY_TTL_MS)]
+    );
   });
 
-  if (!requireVerify) {
-    return {
-      status: 'active',
-      emailDelivered: true,
-      message: 'Your account is ready. You can log in now.',
-      email
-    };
-  }
-
+  // Send verification email via Brevo SMTP asynchronously (non-blocking)
   const link = backendUrl() + '/api/onboard/verify?token=' + encodeURIComponent(token);
   let emailDelivered = true;
   try {
     const sent = await mailer.sendVerificationEmail({ to: email, businessName: name, link });
     emailDelivered = !sent || sent.delivered !== false;
   } catch (e) {
-    // The account + token are already saved. Log loudly but do not fail the signup;
-    // the user can request a fresh link, and the error is visible in the server logs.
     emailDelivered = false;
-    console.error('[onboarding] verification email FAILED for ' + email + ': ' + (e && e.message));
+    console.error('[onboarding] optional verification email FAILED for ' + email + ': ' + (e && e.message));
   }
 
   return {
-    status: 'pending_verification',
+    status: 'active',
     emailDelivered,
-    message: emailDelivered
-      ? 'Check your email to verify your account and activate your workspace.'
-      : 'Your account was created, but we could not send the verification email. Please try registering again in a moment, or contact support.',
+    message: 'Your account has been created successfully. You can log in now.',
     email
   };
 }

@@ -149,6 +149,7 @@ async function query(text, params = []) {
         email: params[0],
         password_hash: params[1],
         business_name: params[2],
+        business_code: null,
         app_version: params[3],
         status: params[4] || 'PENDING',
         created_at: new Date(),
@@ -187,6 +188,8 @@ async function query(text, params = []) {
       if (businessNameParam) set.business_name = params[Number(businessNameParam[1]) - 1];
       const appVersionParam = /set\s+app_version\s*=\s*\$(\d+)/i.exec(sql);
       if (appVersionParam) set.app_version = params[Number(appVersionParam[1]) - 1];
+      const businessCodeParam = /set\s+business_code\s*=\s*\$(\d+)/i.exec(sql);
+      if (businessCodeParam) set.business_code = params[Number(businessCodeParam[1]) - 1];
 
       if (id !== null && !isNaN(id) && Object.keys(set).length) {
         await accountsCol.updateOne({ id }, { $set: set });
@@ -223,7 +226,10 @@ async function query(text, params = []) {
         return { rows: doc ? [transformDoc(doc)] : [] };
       }
       if (lower.includes('account_id = $1')) {
-        const filter = { account_id: Number(params[0]) };
+        const accountRef = String(params[0]);
+        const filter = {
+          account_id: /^\d+$/.test(accountRef) ? { $in: [accountRef, Number(accountRef)] } : accountRef
+        };
         if (lower.includes('app = $2')) filter.app = params[1];
         if (filterActive) filter.active = true;
         const docs = await bizCol.find(filter).sort({ app: 1 }).toArray();
@@ -247,17 +253,26 @@ async function query(text, params = []) {
         app: params[2],
         active: params[3] !== false,
         created_at: new Date(),
-        account_id: params[4] ? Number(params[4]) : null
+        account_id: params[4] ? String(params[4]) : null
       };
       await bizCol.insertOne(doc);
       return { rows: [{ id }] };
     }
     if (lower.startsWith('update businesses')) {
-      const accountId = Number(params[0]);
+      const accountCode = String(params[0]);
       const id = Number(params[1]);
+      const filter = { id };
+      if (lower.includes('account_id is null')) {
+        filter.account_id = null;
+      } else if (lower.includes('account_id = $3')) {
+        const previousRef = String(params[2]);
+        filter.account_id = /^\d+$/.test(previousRef)
+          ? { $in: [previousRef, Number(previousRef)] }
+          : previousRef;
+      }
       const updated = await bizCol.updateOne(
-        { id, account_id: null },
-        { $set: { account_id: accountId } }
+        filter,
+        { $set: { account_id: accountCode } }
       );
       return { rows: updated.modifiedCount ? [{ id }] : [] };
     }
@@ -265,7 +280,10 @@ async function query(text, params = []) {
       if (lower.includes('code = $1')) {
         await bizCol.deleteMany({ code: params[0] });
       } else if (lower.includes('account_id = $1')) {
-        await bizCol.deleteMany({ account_id: Number(params[0]) });
+        const accountRef = String(params[0]);
+        await bizCol.deleteMany({
+          account_id: /^\d+$/.test(accountRef) ? { $in: [accountRef, Number(accountRef)] } : accountRef
+        });
       }
       return { rows: [] };
     }

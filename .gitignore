@@ -1,3 +1,48 @@
-node_modules
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# environment / secrets
 .env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / editor
 .DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# build / cache
+dist/
+build/
+coverage/
+.cache/
+*.tsbuildinfo
+
+# databases / dumps
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+mongo-backup*/
+pg-backup*/
+
+# misc
+tmp/
+temp/

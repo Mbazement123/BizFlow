@@ -357,6 +357,11 @@ async function login(body) {
     code = (any.rows[0] && any.rows[0].code) || '';
   }
   const apps = appsForAccount(acc.app_version, biz.rows);
+  if (!code || !apps.length) {
+    const e = new Error('No active application workspace is linked to this account. Please contact support.');
+    e.statusCode = 403;
+    throw e;
+  }
 
   // Create a session token.
   const token = randomToken(32);

@@ -44,6 +44,31 @@
     else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; }
   }
 
+  function continueToWorkspace(r) {
+    var supportedApps = ['sales', 'services'];
+    var apps = r && Array.isArray(r.apps)
+      ? r.apps.filter(function (app) { return supportedApps.indexOf(app) !== -1; })
+      : [];
+    if (!r || !r.code || !apps.length) {
+      throw new Error('No active application workspace is linked to this account. Please contact support.');
+    }
+
+    try {
+      localStorage.setItem('bizCode', r.code);
+      if (r.session) localStorage.setItem('bizSession', r.session);
+      if (r.bizName) localStorage.setItem('bizName', r.bizName);
+    } catch (e) {}
+
+    var businessCode = encodeURIComponent(r.code);
+    if (apps.length === 1) {
+      window.location.href = '/' + apps[0] + '.html?b=' + businessCode;
+    } else if (apps.indexOf('sales') !== -1 && apps.indexOf('services') !== -1) {
+      window.location.href = '/?b=' + businessCode + '&pick=1';
+    } else {
+      throw new Error('This account has an unsupported application selection. Please contact support.');
+    }
+  }
+
   // Toggle password visibility
   dlg.querySelectorAll('[data-toggle]').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -74,19 +99,7 @@
     if (!email || !password) { msg('loginMsg', 'Enter your email and password.'); return; }
     busy(btn, true, 'Logging in...');
     apiPost('/api/onboard/login', { email: email, password: password })
-      .then(function (r) {
-        try {
-          localStorage.setItem('bizCode', r.code || '');
-          if (r.session) localStorage.setItem('bizSession', r.session);
-          if (r.bizName) localStorage.setItem('bizName', r.bizName);
-        } catch (e) {}
-        // Same flow as before: if one app, go straight there; otherwise choose.
-        if (r.apps && r.apps.length === 1) {
-          window.location.href = '/' + r.apps[0] + '.html?b=' + encodeURIComponent(r.code);
-        } else {
-          window.location.href = '/?b=' + encodeURIComponent(r.code) + '&pick=1';
-        }
-      })
+      .then(continueToWorkspace)
       .catch(function (e) { busy(btn, false); msg('loginMsg', e.message || 'Log in failed.'); });
   });
 
@@ -110,18 +123,7 @@
         // Automatically log in after successful signup
         return apiPost('/api/onboard/login', { email: payload.email, password: payload.password });
       })
-      .then(function (r) {
-        try {
-          localStorage.setItem('bizCode', r.code || '');
-          if (r.session) localStorage.setItem('bizSession', r.session);
-          if (r.bizName) localStorage.setItem('bizName', r.bizName);
-        } catch (e) {}
-        if (r.apps && r.apps.length === 1) {
-          window.location.href = '/' + r.apps[0] + '.html?b=' + encodeURIComponent(r.code);
-        } else {
-          window.location.href = '/?b=' + encodeURIComponent(r.code) + '&pick=1';
-        }
-      })
+      .then(continueToWorkspace)
       .catch(function (e) { busy(btn, false); msg('signupMsg', e.message || 'Sign up failed.'); });
   });
 

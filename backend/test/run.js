@@ -236,6 +236,14 @@ async function test(name, fn) {
     const relog = await onboarding.login({ email: EMAIL, password: 'brand new pass' });
     assert.ok(relog.session);
   });
+  await test('login rejects accounts without an active application workspace', async () => {
+    const acc = (await query('SELECT id FROM accounts WHERE lower(email)=lower($1)', [EMAIL])).rows[0];
+    await query('UPDATE businesses SET active = FALSE WHERE account_id = $1', [acc.id]);
+    await assert.rejects(
+      onboarding.login({ email: EMAIL, password: 'brand new pass' }),
+      /No active application workspace is linked/
+    );
+  });
 
   console.log('\n' + passed + ' passed' + (failures.length ? ', ' + failures.length + ' FAILED' : '') + ' (code ' + CODE + ')');
 

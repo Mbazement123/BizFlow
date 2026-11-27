@@ -30,6 +30,16 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function appsForAccount(appVersion, businesses) {
+  const activeApps = new Set();
+  businesses.forEach(b => {
+    const app = String(b.app || '').toUpperCase();
+    if (app === 'SALES' || app === 'SERVICES') activeApps.add(app);
+  });
+  const selectedApps = APP_VERSION_TO_APPS[appVersion] || Array.from(activeApps);
+  return selectedApps.filter(app => activeApps.has(app)).map(app => app.toLowerCase());
+}
+
 function validateRegistration({ businessName, email, password, appVersion }) {
   const errors = [];
   const name = String(businessName || '').trim();
@@ -346,8 +356,7 @@ async function login(body) {
     const any = await query('SELECT code FROM businesses WHERE account_id = $1 LIMIT 1', [acc.id]);
     code = (any.rows[0] && any.rows[0].code) || '';
   }
-  const apps = [];
-  biz.rows.forEach(b => { const a = String(b.app || '').toLowerCase(); if ((a === 'sales' || a === 'services') && !apps.includes(a)) apps.push(a); });
+  const apps = appsForAccount(acc.app_version, biz.rows);
 
   // Create a session token.
   const token = randomToken(32);
@@ -420,7 +429,9 @@ async function resetPassword(body) {
 async function sessionFor(token) {
   if (!token) return null;
   const r = await query(
-    `SELECT s.account_id, s.expires_at FROM sessions s WHERE s.token_hash = $1`,
+    `SELECT s.account_id, s.expires_at, a.app_version
+     FROM sessions s JOIN accounts a ON a.id = s.account_id
+     WHERE s.token_hash = $1`,
     [sha256(String(token))]
   );
   if (!r.rows.length) return null;
@@ -428,8 +439,8 @@ async function sessionFor(token) {
   if (new Date(row.expires_at).getTime() < Date.now()) return null;
   const biz = await query('SELECT code, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id', [row.account_id]);
   if (!biz.rows.length) return null;
-  const apps = [];
-  biz.rows.forEach(b => { const a = String(b.app || '').toLowerCase(); if ((a === 'sales' || a === 'services') && !apps.includes(a)) apps.push(a); });
+  const apps = appsForAccount(row.app_version, biz.rows);
+  if (!apps.length) return null;
   return { accountId: row.account_id, code: biz.rows[0].code, apps };
 }
 

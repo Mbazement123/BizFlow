@@ -34,7 +34,7 @@ function appsForAccount(appVersion, businesses) {
   const activeApps = new Set();
   businesses.forEach(b => {
     const app = String(b.app || '').toUpperCase();
-    if (app === 'SALES' || app === 'SERVICES') activeApps.add(app);
+    if (b.active === true && (app === 'SALES' || app === 'SERVICES')) activeApps.add(app);
   });
   const selectedApps = APP_VERSION_TO_APPS[appVersion] || Array.from(activeApps);
   return selectedApps.filter(app => activeApps.has(app)).map(app => app.toLowerCase());
@@ -78,8 +78,8 @@ async function generateBusinessCode(client) {
 // Insert a business row for one app (Sales or Services) linked to the account.
 async function createBusinessRow(client, accountId, code, name, app) {
   const ins = await client.query(
-    'INSERT INTO businesses (code, name, app, active, account_id) VALUES ($1,$2,$3,TRUE,$4) RETURNING id',
-    [code, name, app, accountId]
+    'INSERT INTO businesses (code, name, app, active, account_id) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+    [code, name, app, true, accountId]
   );
   return ins.rows[0].id;
 }
@@ -346,10 +346,28 @@ async function login(body) {
     throw e;
   }
 
-  const biz = await query(
+  let biz = await query(
     'SELECT id, code, name, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id',
     [acc.id]
   );
+  if (!biz.rows.length && APP_VERSION_TO_APPS[acc.app_version]) {
+    const linked = await query('SELECT id FROM businesses WHERE account_id = $1 LIMIT 1', [acc.id]);
+    if (!linked.rows.length) {
+      await withTransaction(async client => {
+        const linkedDuringProvision = await client.query(
+          'SELECT id FROM businesses WHERE account_id = $1 LIMIT 1',
+          [acc.id]
+        );
+        if (!linkedDuringProvision.rows.length) {
+          await provisionAccount(client, acc.id, acc.business_name, acc.app_version, false);
+        }
+      });
+      biz = await query(
+        'SELECT id, code, name, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id',
+        [acc.id]
+      );
+    }
+  }
   let code = (biz.rows[0] && biz.rows[0].code) || '';
   if (!code) {
     // Legacy data safety: fall back to any business row this account owns.
@@ -434,17 +452,17 @@ async function resetPassword(body) {
 async function sessionFor(token) {
   if (!token) return null;
   const r = await query(
-    `SELECT s.account_id, s.expires_at, a.app_version
-     FROM sessions s JOIN accounts a ON a.id = s.account_id
-     WHERE s.token_hash = $1`,
+    'SELECT account_id, expires_at FROM sessions WHERE token_hash = $1',
     [sha256(String(token))]
   );
   if (!r.rows.length) return null;
   const row = r.rows[0];
   if (new Date(row.expires_at).getTime() < Date.now()) return null;
+  const account = await query('SELECT app_version FROM accounts WHERE id = $1', [row.account_id]);
+  if (!account.rows.length) return null;
   const biz = await query('SELECT code, app FROM businesses WHERE account_id = $1 AND active = TRUE ORDER BY id', [row.account_id]);
   if (!biz.rows.length) return null;
-  const apps = appsForAccount(row.app_version, biz.rows);
+  const apps = appsForAccount(account.rows[0].app_version, biz.rows);
   if (!apps.length) return null;
   return { accountId: row.account_id, code: biz.rows[0].code, apps };
 }
